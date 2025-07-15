@@ -120,6 +120,9 @@
         const statusInput = document.getElementById('statusInput');
         let currentArea = null;
 
+
+const SUPABASE_URL      = 'https://pefxxpapmtlthwniosex.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZnh4cGFwbXRsdGh3bmlvc2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI1NjIxNTgsImV4cCI6MjA2ODEzODE1OH0.d-fhwEDACY6drKzWTb27tEUMF7TWVLu4aLZBt7ItERY';
         // Initialize grid data from localStorage or create new
         let gridData = JSON.parse(localStorage.getItem('gridData')) || Array(7).fill().map(() => Array(6).fill(''));
 
