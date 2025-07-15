@@ -1,243 +1,360 @@
-<!DOCTYPE html><html lang="en">
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Area Status Grid</title>
+  <title>Area Status Grid – Public</title>
+
+  <!-- Supabase JS v2 -->
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-      background-color: #f8f9fa;
+    :root {
+      --cell-width: 150px;
+      --cell-height: 100px;
+      --primary: #2196f3;
+      --success: #4caf50;
+      --danger:  #f44336;
     }
-    .app {
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f0f0f0;
+      min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 20px;
     }
-    h1 {
-      margin-bottom: 20px;
-    }
+
+    h1 { margin: 30px 0 20px 0; font-size: 2rem; }
+
+    /* ---------- GRID ---------- */
     .grid-container {
       display: grid;
-      grid-template-columns: 100px repeat(6, 150px);
+      grid-template-columns: 100px repeat(6, var(--cell-width));
       gap: 10px;
-      margin-bottom: 40px;
+      margin-bottom: 50px;
     }
     .module-label {
       width: 100px;
-      height: 100px;
+      height: var(--cell-height);
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: bold;
-      background-color: #dee2e6;
+      background-color: #e0e0e0;
       border: 2px solid #333;
+      border-radius: 8px;
+      user-select: none;
     }
     .area {
-      width: 150px;
-      height: 100px;
+      width: var(--cell-width);
+      height: var(--cell-height);
       border: 2px solid #333;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       text-align: center;
       cursor: pointer;
+      overflow: hidden;
+      padding: 5px;
       font-size: 14px;
       transition: background-color 0.3s;
       position: relative;
-      background-color: #add8e6;
+      border-radius: 8px;
+      user-select: none;
     }
-    .area.updated {
-      background-color: #90ee90;
+    .area.updated   { background-color: #90ee90; }
+    .area.untouched { background-color: #add8e6; }
+    .area:hover { filter: brightness(90%); }
+
+    .blinking-light {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      width: 10px;
+      height: 10px;
+      background-color: red;
+      border-radius: 50%;
+      animation: blink 1s infinite;
     }
-    .area:hover {
-      filter: brightness(90%);
-    }
-    .modal, .history-modal {
+    @keyframes blink { 0%{opacity:1;}50%{opacity:0;}100%{opacity:1;} }
+
+    .timestamp { font-size: 11px; margin-top: 4px; color: #555; }
+
+    /* ---------- MODALS ---------- */
+    .modal {
       display: none;
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0.6);
+      background-color: rgba(0,0,0,0.5);
       align-items: center;
       justify-content: center;
       z-index: 1000;
     }
-    .modal-content, .history-content {
-      background: white;
+    .modal-content {
+      background: #fff;
       padding: 20px;
       border-radius: 8px;
-      width: 350px;
+      width: 320px;
+      text-align: center;
+      box-shadow: 0 4px 10px rgba(0,0,0,.15);
       max-height: 80vh;
       overflow-y: auto;
     }
     .modal-content input {
-      width: 100%;
+      width: 85%;
       padding: 10px;
-      margin-bottom: 10px;
+      margin: 10px 0 20px 0;
+      border: 1px solid #ccc;
+      border-radius: 4px;
     }
-    .modal-content button, .history-content button {
-      padding: 8px 16px;
-      margin-right: 8px;
+    .modal-content button {
+      padding: 10px 20px;
+      margin: 5px;
+      border: none;
+      border-radius: 4px;
+      font-weight: bold;
       cursor: pointer;
+      color:#fff;
     }
+    .save-btn   { background: var(--success); }
+    .cancel-btn { background: var(--danger); }
+
+    /* ---------- TIMELINE ---------- */
     .timeline {
-      border-left: 3px solid #007bff;
+      border-left: 3px solid var(--primary);
       padding-left: 10px;
       margin-top: 10px;
     }
     .timeline-entry {
-      margin-bottom: 12px;
+      margin-bottom: 16px;
+      position: relative;
+    }
+    .timeline-entry::before {
+      content: '';
+      position: absolute;
+      left: -10px;
+      top: 4px;
+      width: 12px;
+      height: 12px;
+      background: var(--primary);
+      border-radius: 50%;
+      border: 2px solid #fff;
     }
     .timeline-entry time {
       font-size: 12px;
-      color: #555;
+      font-weight: bold;
+      color: #333;
     }
-    .auth-box {
-      margin-bottom: 20px;
-    }
-    #analytics {
-      margin-top: 20px;
-    }
+    .timeline-entry .status-change { color: #555; }
   </style>
 </head>
 <body>
-  <div class="app" id="app">
-    <div class="auth-box" id="authBox">
-      <input type="email" id="email" placeholder="Email" />
-      <input type="password" id="password" placeholder="Password" />
-      <button onclick="signIn()">Sign In</button>
-      <button onclick="signUp()">Sign Up</button>
-    </div>
-    <div style="display:none;" id="mainContent">
-      <h1>Area Status Grid</h1>
-      <button onclick="logout()">Logout</button>
-      <div class="grid-container" id="grid"></div>
-      <div id="analytics">Analytics Placeholder</div>
-    </div>
-  </div>  <div class="modal" id="modal">
+  <h1>Area Status Grid</h1>
+
+  <div class="grid-container" id="grid"></div>
+
+  <!-- -------------- UPDATE MODAL -------------- -->
+  <div class="modal" id="modal">
     <div class="modal-content">
       <h2>Update Area Status</h2>
       <input type="text" id="statusInput" maxlength="50" placeholder="Enter status" />
-      <button onclick="saveStatus()">Save</button>
-      <button onclick="closeModal()">Cancel</button>
+      <div>
+        <button class="save-btn"   id="saveBtn">Save</button>
+        <button class="cancel-btn" id="cancelBtn">Cancel</button>
+      </div>
     </div>
-  </div>  <div class="history-modal" id="historyModal">
-    <div class="history-content">
-      <h2>Update History</h2>
-      <div class="timeline" id="historyTimeline"></div>
-      <button onclick="closeHistory()">Close</button>
-    </div>
-  </div>  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>  <script>
-    const supabaseUrl = 'https://kxbpsfxcploqijsinxes.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YnBzZnhjcGxvcWlqc2lueGVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI1NjAzNTMsImV4cCI6MjA2ODEzNjM1M30.CQr9DvVf2are2VnK9VLviKBWlN401n-U2gOXrg5F5OE';
-    const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+  </div>
 
-    let currentUser = null;
-    let currentArea = null;
+  <!-- -------------- HISTORY MODAL -------------- -->
+  <div class="modal" id="historyModal">
+    <div class="modal-content" style="width:380px;">
+      <h2>Update History</h2>
+      <ul id="historyList" class="timeline"></ul>
+      <button class="cancel-btn" id="historyCloseBtn" style="margin-top:10px;">Close</button>
+    </div>
+  </div>
+
+  <!-- -------------- SCRIPT -------------- -->
+  <script>
+    /* ============================
+       🔌 Supabase Config – PUBLIC
+    ============================ */
+    const SUPABASE_URL      = 'https://kxbpsfxcploqijsinxes.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YnBzZnhjcGxvcWlqc2lueGVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI1NjAzNTMsImV4cCI6MjA2ODEzNjM1M30.CQr9DvVf2are2VnK9VLviKBWlN401n-U2gOXrg5F5OE';
+
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    /* ============================
+       📊 Constants & State
+    ============================ */
+    const MODULES   = 7; // rows
+    const POSITIONS = 6; // cols
+
+    let gridData   = Array.from({ length: MODULES }, () => Array(POSITIONS).fill(null));
     let currentAreaId = null;
 
-    async function signIn() {
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (data.user) init();
-      else alert(error.message);
+    /* ============================
+       🚀 Init on page load
+    ============================ */
+    document.addEventListener('DOMContentLoaded', () => {
+      fetchGrid();
+      subscribeRealtime();
+    });
+
+    /* ============================
+       🔄 Realtime subscription
+    ============================ */
+    function subscribeRealtime() {
+      supabase
+        .channel('public:areas')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'areas' }, payload => {
+          const area = payload.new;
+          if (!area) return;
+          const [row, col] = area.area_id.split('-').map(Number);
+          gridData[row][col] = area;
+          renderCell(row, col);
+        })
+        .subscribe();
     }
 
-    async function signUp() {
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
-      const { data, error } = await supabase.auth.signUp({ email, password });
-      if (data.user) alert('User registered, now log in.');
-      else alert(error.message);
-    }
-
-    async function logout() {
-      await supabase.auth.signOut();
-      location.reload();
-    }
-
-    async function init() {
-      document.getElementById('authBox').style.display = 'none';
-      document.getElementById('mainContent').style.display = 'block';
+    /* ============================
+       📥 Fetch entire grid once
+    ============================ */
+    async function fetchGrid() {
+      const { data, error } = await supabase.from('areas').select('*');
+      if (error) { console.error(error); return; }
+      gridData = Array.from({ length: MODULES }, () => Array(POSITIONS).fill(null));
+      data.forEach(a => {
+        const [r, c] = a.area_id.split('-').map(Number);
+        gridData[r][c] = a;
+      });
       renderGrid();
     }
 
-    async function renderGrid() {
-      const grid = document.getElementById('grid');
+    /* ============================
+       🖌️ Render functions
+    ============================ */
+    const grid = document.getElementById('grid');
+
+    function renderGrid() {
       grid.innerHTML = '';
-      for (let row = 0; row < 7; row++) {
+      for (let row = 0; row < MODULES; row++) {
         const label = document.createElement('div');
         label.className = 'module-label';
         label.textContent = `Module ${row + 1}`;
         grid.appendChild(label);
-
-        for (let col = 0; col < 6; col++) {
-          const areaId = `${row}-${col}`;
-          const { data: statusData } = await supabase.from('areas').select('*').eq('area_id', areaId).single();
-          const area = document.createElement('div');
-          area.className = 'area';
-          if (statusData?.status) {
-            area.classList.add('updated');
-            area.textContent = statusData.status;
-          } else {
-            area.textContent = 'Click to update';
-          }
-          area.onclick = () => openModal(row, col);
-          area.ondblclick = () => openHistory(areaId);
-          grid.appendChild(area);
-        }
+        for (let col = 0; col < POSITIONS; col++) renderCell(row, col);
       }
     }
+
+    function renderCell(row, col) {
+      // Compute index in DOM: label + preceding cells
+      const index = row * (POSITIONS + 1) + col + 1;
+      let cell = grid.children[index];
+      if (!cell) {
+        cell = document.createElement('div');
+        grid.appendChild(cell);
+      }
+      cell.className = 'area';
+
+      const data = gridData[row][col];
+      if (data?.status) cell.classList.add('updated');
+      else cell.classList.add('untouched');
+
+      cell.innerHTML = '';
+      cell.dataset.row = row;
+      cell.dataset.col = col;
+
+      const statusDiv = document.createElement('div');
+      statusDiv.textContent = data?.status || 'Click to update';
+      cell.appendChild(statusDiv);
+      if (data?.updated_at) {
+        const ts = document.createElement('div');
+        ts.className = 'timestamp';
+        ts.textContent = new Date(data.updated_at).toLocaleString();
+        cell.appendChild(ts);
+      }
+      if (data?.status) {
+        const light = document.createElement('div');
+        light.className = 'blinking-light';
+        cell.appendChild(light);
+      }
+
+      cell.onclick = () => openModal(row, col);
+      cell.ondblclick = e => { e.stopPropagation(); openHistory(`${row}-${col}`); };
+    }
+
+    /* ============================
+       ✏️ Modal handlers
+    ============================ */
+    const modal          = document.getElementById('modal');
+    const statusInput    = document.getElementById('statusInput');
+    const saveBtn        = document.getElementById('saveBtn');
+    const cancelBtn      = document.getElementById('cancelBtn');
 
     function openModal(row, col) {
-      currentArea = { row, col };
       currentAreaId = `${row}-${col}`;
-      document.getElementById('statusInput').value = '';
-      document.getElementById('modal').style.display = 'flex';
+      statusInput.value = gridData[row][col]?.status || '';
+      modal.style.display = 'flex';
+      statusInput.focus();
     }
+    function closeModal() { modal.style.display = 'none'; currentAreaId = null; }
 
-    function closeModal() {
-      document.getElementById('modal').style.display = 'none';
-    }
+    statusInput.addEventListener('keydown', e => { if (e.key === 'Enter') saveStatus(); });
+    saveBtn.onclick   = saveStatus;
+    cancelBtn.onclick = closeModal;
 
     async function saveStatus() {
-      const status = document.getElementById('statusInput').value.trim();
-      if (!status) return;
-      await supabase.from('areas').upsert({ area_id: currentAreaId, status });
-      await supabase.from('logs').insert({ area_id: currentAreaId, status, user_email: currentUser?.email || 'unknown' });
+      if (!currentAreaId) return;
+      const newStatus = statusInput.value.trim();
+      const { data, error } = await supabase.from('areas').upsert({
+        area_id: currentAreaId,
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      }).select().single();
+      if (!error) {
+        await supabase.from('logs').insert({ area_id: currentAreaId, status: newStatus });
+      }
       closeModal();
-      renderGrid();
     }
+
+    /* ============================
+       📜 History modal
+    ============================ */
+    const historyModal   = document.getElementById('historyModal');
+    const historyList    = document.getElementById('historyList');
+    const historyCloseBtn= document.getElementById('historyCloseBtn');
+
+    historyCloseBtn.onclick = () => historyModal.style.display = 'none';
 
     async function openHistory(areaId) {
-      const { data: logs } = await supabase.from('logs').select('*').eq('area_id', areaId).order('created_at', { ascending: false });
-      const container = document.getElementById('historyTimeline');
-      container.innerHTML = '';
-      logs.forEach(log => {
-        const entry = document.createElement('div');
-        entry.className = 'timeline-entry';
-        entry.innerHTML = `<time>${new Date(log.created_at).toLocaleString()}</time><br><strong>${log.status}</strong> <br><small>by ${log.user_email}</small>`;
-        container.appendChild(entry);
-      });
-      document.getElementById('historyModal').style.display = 'flex';
-    }
-
-    function closeHistory() {
-      document.getElementById('historyModal').style.display = 'none';
-    }
-
-    // Check login on page load
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        currentUser = user;
-        init();
+      const { data, error } = await supabase
+        .from('logs')
+        .select('*')
+        .eq('area_id', areaId)
+        .order('created_at', { ascending: false });
+      if (error) { console.error(error); return; }
+      historyList.innerHTML = '';
+      if (!data.length) {
+        historyList.innerHTML = '<li>No history yet</li>';
+      } else {
+        data.forEach(l => {
+          const li = document.createElement('li');
+          li.className = 'timeline-entry';
+          li.innerHTML = `<time>${new Date(l.created_at).toLocaleString()}</time><br><span class="status-change">${l.status}</span>`;
+          historyList.appendChild(li);
+        });
       }
-    });
-  </script></body>
+      historyModal.style.display = 'flex';
+    }
+  </script>
+</body>
 </html>
