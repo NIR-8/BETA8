@@ -1,147 +1,197 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Area Status Grid</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      background: #222;
-      color: #eee;
-      margin: 0;
-      padding: 20px;
-      text-align: center;
-    }
-    .grid-container {
-      display: grid;
-      grid-template-columns: 100px repeat(6, 1fr);
-      gap: 10px;
-      margin-top: 20px;
-    }
-    .module-label {
-      background: #444;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      font-weight: bold;
-      height: 80px;
-    }
-    .area {
-      background: #555;
-      border: 2px solid #777;
-      height: 80px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      cursor: pointer;
-      font-size: 14px;
-      position: relative;
-    }
-    .area.updated {
-      background-color: #4caf50;
-    }
-    .modal {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(0,0,0,0.5);
-      display: none;
-      justify-content: center;
-      align-items: center;
-    }
-    .modal-content {
-      background: white;
-      color: black;
-      padding: 20px;
-      border-radius: 8px;
-    }
-  </style>
-</head>
-<body>
-  <h1>Area Status Grid</h1>
-  <div class="grid-container" id="grid"></div>
+<!DOCTYPE html>  <html lang="en">  
+<head>  
+    <meta charset="UTF-8">  
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">  
+    <title>6x7 Area Status Grid</title>  
+    <style>  
+        body {  
+            Arial, sans-serif;  
+            display: flex;  
+            flex-direction: column;  
+            align-items: center;  
+            background-color: #f0f0f0;  
+        }  
+        h1 {  
+            20px 0;  
+        }  
+        .grid-container {  
+            display: grid;  
+            grid-template-columns: 100px repeat(6, 150px);  
+            gap: 10px;  
+            20px;  
+        }  
+        .module-label {  
+            width: 100px;  
+            height: 100px;  
+            display: flex;  
+            align-items: center;  
+            justify-content: center;  
+            font-weight: bold;  
+            font-size: 16px;  
+            background-color: #e0e0e0;  
+            border: 2px solid #333;  
+        }  
+        .area {  
+            width: 150px;  
+            height: 100px;  
+            border: 2px solid #333;  
+            display: flex;  
+            align-items: center;  
+            justify-content: center;  
+            text-align: center;  
+            cursor: pointer;  
+            overflow: hidden;  
+            padding: 5px;  
+            font-size: 14px;  
+            transition: background-color 0.3s;  
+            position: relative;  
+        }  
+        .area.updated {  
+            background-color: #90EE90; /* Green for modified areas */  
+        }  
+        .area.untouched {  
+            background-color: #ADD8E6; /* Blue for untouched areas */  
+        }  
+        .area:hover {  
+            filter: brightness(90%);  
+        }  
+        .blinking-light {  
+            position: absolute;  
+            top: 5px;  
+            right: 5px;  
+            width: 10px;  
+            height: 10px;  
+            background-color: red;  
+            border-radius: 50%;  
+            animation: blink 1s infinite;  
+        }  
+        @keyframes blink {  
+            0% { opacity: 1; }  
+            50% { opacity: 0; }  
+            100% { opacity: 1; }  
+        }  
+        .modal {  
+            display: none;  
+            position: fixed;  
+            top: 0;  
+            left: 0;  
+            width: 100%;  
+            height: 100%;  
+            background-color: rgba(0, 0, 0, 0.5);  
+            align-items: center;  
+            justify-content: center;  
+        }  
+        .modal-content {  
+            background-color: white;  
+            padding: 20px;  
+            border-radius: 5px;  
+            width: 300px;  
+            text-align: center;  
+        }  
+        .modal-content input {  
+            width: 80%;  
+            padding: 10px;  
+            10px 0;  
+        }  
+        .modal-content button {  
+            padding: 10px 20px;  
+            5px;  
+            cursor: pointer;  
+        }  
+    </style>  
+</head>  
+<body>  
+    <h1>Area Status Grid</h1>  
+    <div class="grid-container" id="grid"></div>  
+    <div class="modal" id="modal">  
+        <div class="modal-content">  
+            <h2>Update Area Status</h2>  
+            <input type="text" id="statusInput" maxlength="50" placeholder="Enter status">  
+            <button onclick="saveStatus()">Save</button>  
+            <button onclick="closeModal()">Cancel</button>  
+        </div>  
+    </div>      <script>
+        const grid = document.getElementById('grid');
+        const modal = document.getElementById('modal');
+        const statusInput = document.getElementById('statusInput');
+        let currentArea = null;
 
-  <div class="modal" id="modal">
-    <div class="modal-content">
-      <h2>Update Area Status</h2>
-      <input type="text" id="statusInput" placeholder="Enter new status">
-      <br/><br/>
-      <button onclick="saveStatus()">Save</button>
-      <button onclick="closeModal()">Cancel</button>
-    </div>
-  </div>
+        // Initialize grid data from localStorage or create new
+        let gridData = JSON.parse(localStorage.getItem('gridData')) || Array(7).fill().map(() => Array(6).fill(''));
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
-  <script>
-    const supabase = supabase.createClient(
-      'https://pefxxpapmtlthwniosex.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZnh4cGFwbXRsdGh3bmlvc2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI1NjIxNTgsImV4cCI6MjA2ODEzODE1OH0.d-fhwEDACY6drKzWTb27tEUMF7TWVLu4aLZBt7ItERY'
-    );
+        // Render the grid
+        function renderGrid() {
+            grid.innerHTML = '';
+            for (let row = 0; row < 7; row++) {
+                // Add module label
+                const label = document.createElement('div');
+                label.className = 'module-label';
+                label.textContent = Module ${row + 1};
+                grid.appendChild(label);
 
-    const grid = document.getElementById('grid');
-    const modal = document.getElementById('modal');
-    const statusInput = document.getElementById('statusInput');
-    let currentCell = null;
+                // Add area cells
+                for (let col = 0; col < 6; col++) {
+                    const area = document.createElement('div');
+                    area.className = 'area';
+                    area.classList.add(gridData[row][col] ? 'updated' : 'untouched');
+                    area.dataset.row = row;
+                    area.dataset.col = col;
+                    area.textContent = gridData[row][col] || 'Click to update';
+                    if (gridData[row][col]) {
+                        const light = document.createElement('div');
+                        light.className = 'blinking-light';
+                        area.appendChild(light);
+                    }
+                    area.onclick = () => openModal(row, col);
+                    grid.appendChild(area);
+                }
+            }
+        }
 
-    async function fetchGrid() {
-      const { data, error } = await supabase.from('grid').select('*');
-      if (error) {
-        alert('Error fetching grid');
-        return;
-      }
+        // Open modal to update status
+        function openModal(row, col) {
+            currentArea = { row, col };
+            statusInput.value = gridData[row][col];
+            modal.style.display = 'flex';
+            statusInput.focus();
+        }
 
-      grid.innerHTML = '';
-      for (let row = 0; row < 7; row++) {
-        const label = document.createElement('div');
-        label.className = 'module-label';
-        label.textContent = `Module ${row + 1}`;
-        grid.appendChild(label);
+        // Close modal
+        function closeModal() {
+            modal.style.display = 'none';
+            currentArea = null;
+            statusInput.value = '';
+        }
 
-        for (let col = 0; col < 6; col++) {
-          const cellData = data.find(d => d.row === row && d.col === col);
-          const area = document.createElement('div');
-          area.className = 'area';
-          if (cellData?.status) area.classList.add('updated');
-          area.textContent = cellData?.status || 'Click to update';
-          area.onclick = () => openModal(row, col, cellData?.status || '');
-          grid.appendChild(area);
-        }
-      }
-    }
+        // Save status
+        function saveStatus() {
+            if (currentArea) {
+                gridData[currentArea.row][currentArea.col] = statusInput.value.trim();
+                localStorage.setItem('gridData', JSON.stringify(gridData));
+                renderGrid();
+                closeModal();
+            }
+        }
 
-    function openModal(row, col, currentStatus) {
-      currentCell = { row, col };
-      statusInput.value = currentStatus;
-      modal.style.display = 'flex';
-      statusInput.focus();
-    }
+        // Handle Enter key to save status
+        statusInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                saveStatus();
+            }
+        });
 
-    function closeModal() {
-      modal.style.display = 'none';
-      currentCell = null;
-      statusInput.value = '';
-    }
+        // Simulate real-time updates by polling localStorage
+        setInterval(() => {
+            const updatedData = JSON.parse(localStorage.getItem('gridData'));
+            if (JSON.stringify(updatedData) !== JSON.stringify(gridData)) {
+                gridData = updatedData || Array(7).fill().map(() => Array(6).fill(''));
+                renderGrid();
+            }
+        }, 1000);
 
-    async function saveStatus() {
-      const { row, col } = currentCell;
-      const newStatus = statusInput.value.trim();
+        // Initial render
+        renderGrid();
+    </script>
 
-      await supabase.from('grid')
-        .upsert({ row, col, status: newStatus });
-
-      await supabase.from('logs').insert({
-        area_id: `${row}-${col}`,
-        status: newStatus,
-        updated_by: 'public'
-      });
-
-      closeModal();
-      fetchGrid();
-    }
-
-    fetchGrid();
-    setInterval(fetchGrid, 3000); // Poll every 3s
-  </script>
-</body>
-</html>
+</body>  
+</html>  
