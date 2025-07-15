@@ -1,203 +1,203 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>6x7 Area Status Grid</title>
-    <style>
-        body {
-            Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            background-color: #f0f0f0;
-        }
-        h1 {
-            20px 0;
-        }
-        .grid-container {
-            display: grid;
-            grid-template-columns: 100px repeat(6, 150px);
-            gap: 10px;
-            20px;
-        }
-        .module-label {
-            width: 100px;
-            height: 100px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 16px;
-            background-color: #e0e0e0;
-            border: 2px solid #333;
-        }
-        .area {
-            width: 150px;
-            height: 100px;
-            border: 2px solid #333;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            cursor: pointer;
-            overflow: hidden;
-            padding: 5px;
-            font-size: 14px;
-            transition: background-color 0.3s;
-            position: relative;
-        }
-        .area.updated {
-            background-color: #90EE90; /* Green for modified areas */
-        }
-        .area.untouched {
-            background-color: #ADD8E6; /* Blue for untouched areas */
-        }
-        .area:hover {
-            filter: brightness(90%);
-        }
-        .blinking-light {
-            position: absolute;
-            top: 5px;
-            right: 5px;
-            width: 10px;
-            height: 10px;
-            background-color: red;
-            border-radius: 50%;
-            animation: blink 1s infinite;
-        }
-        @keyframes blink {
-            0% { opacity: 1; }
-            50% { opacity: 0; }
-            100% { opacity: 1; }
-        }
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            align-items: center;
-            justify-content: center;
-        }
-        .modal-content {
-            background-color: white;
-            padding: 20px;
-            border-radius: 5px;
-            width: 300px;
-            text-align: center;
-        }
-        .modal-content input {
-            width: 80%;
-            padding: 10px;
-            10px 0;
-        }
-        .modal-content button {
-            padding: 10px 20px;
-            5px;
-            cursor: pointer;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Area Status Grid</title>
+  <!-- Tailwind (CDN) for quick styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <h1>Area Status Grid</h1>
-    <div class="grid-container" id="grid"></div>
-    <div class="modal" id="modal">
-        <div class="modal-content">
-            <h2>Update Area Status</h2>
-            <input type="text" id="statusInput" maxlength="50" placeholder="Enter status">
-            <button onclick="saveStatus()">Save</button>
-            <button onclick="closeModal()">Cancel</button>
-        </div>
+<body class="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+  <h1 class="text-3xl font-bold mb-6">Area Status Grid</h1>
+  <!-- 7 modules × 6 areas -->
+  <div id="grid" class="grid gap-3" style="grid-template-columns: 110px repeat(6,160px);"></div>
+
+  <!-- Modal for editing + timeline -->
+  <div id="modal" class="fixed inset-0 hidden items-center justify-center bg-black/50">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-96">
+      <h2 id="modalTitle" class="text-xl font-semibold mb-4">Update Area</h2>
+      <input id="statusInput" type="text" maxlength="50" class="w-full border rounded p-2 mb-3" placeholder="Enter status" />
+      <div>
+        <h3 class="font-semibold mb-2">History</h3>
+        <ul id="historyList" class="max-h-48 overflow-y-auto space-y-1 text-sm pr-1"></ul>
+      </div>
+      <div class="flex justify-end gap-2 mt-4">
+        <button id="cancelBtn" class="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Cancel</button>
+        <button id="saveBtn" class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">Save</button>
+      </div>
     </div>
+  </div>
 
-    <script>
-        const grid = document.getElementById('grid');
-        const modal = document.getElementById('modal');
-        const statusInput = document.getElementById('statusInput');
-        let currentArea = null;
+  <!-- Firebase + app code -->
+  <script type="module">
+    // ───────────────── Firebase initialisation ─────────────────
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import {
+      getFirestore,
+      doc,
+      onSnapshot,
+      runTransaction,
+      serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
+    /*
+      1️⃣  Create a Firebase project → https://console.firebase.google.com
+      2️⃣  Enable **Firestore** (test-mode for quick start, or lock it down later)
+      3️⃣  Replace the config object below with **your** project credentials
+      4️⃣  (Optional) Update security rules so anyone can read but only authenticated users can write.
+          For a demo you can temporarily allow read/write:  allow read, write: true;  (NOT for prod!)
+    */
+    const firebaseConfig = {
+      apiKey: "YOUR_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_MSG_ID",
+      appId: "YOUR_APP_ID"
+    };
 
-const SUPABASE_URL      = 'https://pefxxpapmtlthwniosex.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZnh4cGFwbXRsdGh3bmlvc2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI1NjIxNTgsImV4cCI6MjA2ODEzODE1OH0.d-fhwEDACY6drKzWTb27tEUMF7TWVLu4aLZBt7ItERY';
-        // Initialize grid data from localStorage or create new
-        let gridData = JSON.parse(localStorage.getItem('gridData')) || Array(7).fill().map(() => Array(6).fill(''));
+    const app   = initializeApp(firebaseConfig);
+    const db    = getFirestore(app);
 
-        // Render the grid
-        function renderGrid() {
-            grid.innerHTML = '';
-            for (let row = 0; row < 7; row++) {
-                // Add module label
-                const label = document.createElement('div');
-                label.className = 'module-label';
-                label.textContent = `Module ${row + 1}`;
-                grid.appendChild(label);
+    // ───────────────── Config ─────────────────
+    const ROWS = 7; // Modules
+    const COLS = 6; // Areas per module
 
-                // Add area cells
-                for (let col = 0; col < 6; col++) {
-                    const area = document.createElement('div');
-                    area.className = 'area';
-                    area.classList.add(gridData[row][col] ? 'updated' : 'untouched');
-                    area.dataset.row = row;
-                    area.dataset.col = col;
-                    area.textContent = gridData[row][col] || 'Click to update';
-                    if (gridData[row][col]) {
-                        const light = document.createElement('div');
-                        light.className = 'blinking-light';
-                        area.appendChild(light);
-                    }
-                    area.onclick = () => openModal(row, col);
-                    grid.appendChild(area);
-                }
-            }
+    // ───────────────── DOM refs ─────────────────
+    const grid        = document.getElementById("grid");
+    const modal       = document.getElementById("modal");
+    const modalTitle  = document.getElementById("modalTitle");
+    const statusInput = document.getElementById("statusInput");
+    const historyList = document.getElementById("historyList");
+    const cancelBtn   = document.getElementById("cancelBtn");
+    const saveBtn     = document.getElementById("saveBtn");
+
+    // Keep track of which cell is open in the modal
+    let currentArea = null; // { row, col }
+
+    // ───────────────── Helpers ─────────────────
+    const areaId = (r, c) => `${r}_${c}`; // Firestore doc id
+    const fmt    = ts => ts ? new Date(ts.seconds * 1000).toLocaleString() : "";
+
+    // Build static grid skeleton & attach listeners
+    function buildGrid() {
+      for (let row = 0; row < ROWS; row++) {
+        // Row label (Module #)
+        const label = document.createElement("div");
+        label.className = "flex items-center justify-center font-semibold bg-gray-200 rounded border border-gray-400";
+        label.style.width  = "110px";
+        label.style.height = "100px";
+        label.textContent  = `Module ${row + 1}`;
+        grid.appendChild(label);
+
+        for (let col = 0; col < COLS; col++) {
+          const cell = document.createElement("div");
+          cell.id           = `cell-${row}-${col}`;
+          cell.dataset.row  = row;
+          cell.dataset.col  = col;
+          cell.className    = "relative flex flex-col justify-center items-center rounded border border-gray-400 bg-blue-100 cursor-pointer shadow transition hover:brightness-90";
+          cell.style.width  = "160px";
+          cell.style.height = "100px";
+          cell.innerHTML    = `
+              <span class="status font-medium">—</span>
+              <span class="time text-xs text-gray-600 absolute bottom-1"></span>`;
+
+          // Open modal on click
+          cell.addEventListener("click", () => openModal(row, col));
+          grid.appendChild(cell);
+
+          // Live subscribe to Firestore changes for this cell
+          subscribeArea(row, col, cell);
         }
+      }
+    }
 
-        // Open modal to update status
-        function openModal(row, col) {
-            currentArea = { row, col };
-            statusInput.value = gridData[row][col];
-            modal.style.display = 'flex';
-            statusInput.focus();
+    // Subscribe for realtime updates & paint cell
+    function subscribeArea(row, col, cell) {
+      const ref = doc(db, "areas", areaId(row, col));
+      onSnapshot(ref, snap => {
+        const data    = snap.data();
+        const statusEl= cell.querySelector(".status");
+        const timeEl  = cell.querySelector(".time");
+
+        if (data && data.status) {
+          statusEl.textContent = data.status;
+          timeEl.textContent   = fmt(data.updatedAt);
+          cell.classList.remove("bg-blue-100");
+          cell.classList.add("bg-green-200");
+        } else {
+          statusEl.textContent = "Click to update";
+          timeEl.textContent   = "";
+          cell.classList.remove("bg-green-200");
+          cell.classList.add("bg-blue-100");
         }
+      });
+    }
 
-        // Close modal
-        function closeModal() {
-            modal.style.display = 'none';
-            currentArea = null;
-            statusInput.value = '';
-        }
+    // ───────────────── Modal logic ─────────────────
+    function openModal(row, col) {
+      currentArea = { row, col };
+      modalTitle.textContent = `Update Module ${row + 1} – Area ${col + 1}`;
+      statusInput.value = "";
+      historyList.innerHTML = "";
+      modal.classList.remove("hidden");
+      statusInput.focus();
 
-        // Save status
-        function saveStatus() {
-            if (currentArea) {
-                gridData[currentArea.row][currentArea.col] = statusInput.value.trim();
-                localStorage.setItem('gridData', JSON.stringify(gridData));
-                renderGrid();
-                closeModal();
-            }
-        }
+      // Load current doc + history (live)
+      const ref = doc(db, "areas", areaId(row, col));
+      onSnapshot(ref, snap => {
+        const data = snap.data();
+        if (!currentArea || currentArea.row !== row || currentArea.col !== col) return; // modal switched
 
-        // Handle Enter key to save status
-        statusInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                saveStatus();
-            }
+        statusInput.value = data?.status ?? "";
+        // Render history (latest first)
+        historyList.innerHTML = "";
+        (data?.history ?? []).slice().reverse().forEach(entry => {
+          const li = document.createElement("li");
+          li.textContent = `${fmt(entry.updatedAt)} → ${entry.status || "(cleared)"}`;
+          historyList.appendChild(li);
         });
+      });
+    }
 
-        // Simulate real-time updates by polling localStorage
-        setInterval(() => {
-            const updatedData = JSON.parse(localStorage.getItem('gridData'));
-            if (JSON.stringify(updatedData) !== JSON.stringify(gridData)) {
-                gridData = updatedData || Array(7).fill().map(() => Array(6).fill(''));
-                renderGrid();
-            }
-        }, 1000);
+    function closeModal() {
+      modal.classList.add("hidden");
+      currentArea = null;
+      statusInput.value = "";
+      historyList.innerHTML = "";
+    }
 
-        // Initial render
-        renderGrid();
-    </script>
+    async function saveStatus() {
+      if (!currentArea) return;
+      const newStatus = statusInput.value.trim();
+      const ref = doc(db, "areas", areaId(currentArea.row, currentArea.col));
+
+      await runTransaction(db, async transaction => {
+        const snap    = await transaction.get(ref);
+        const data    = snap.data() || {};
+        const history = data.history || [];
+        history.push({ status: newStatus, updatedAt: serverTimestamp() });
+        if (history.length > 50) history.shift(); // keep last 50 entries
+
+        transaction.set(ref, {
+          status: newStatus,
+          updatedAt: serverTimestamp(),
+          history
+        }, { merge: true });
+      });
+
+      closeModal();
+    }
+
+    // ───────────────── Event listeners ─────────────────
+    cancelBtn.addEventListener("click", closeModal);
+    saveBtn.addEventListener("click", saveStatus);
+    statusInput.addEventListener("keydown", e => {
+      if (e.key === "Enter") saveStatus();
+    });
+
+    // ───────────────── Kick-off ─────────────────
+    buildGrid();
+  </script>
 </body>
 </html>
