@@ -1,20 +1,16 @@
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Area Status Grid</title>
+  <title>Area Status Grid – Fixed</title>
   <!-- Tailwind (CDN) for quick styling -->
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="min-h-screen bg-gray-50 flex flex-col items-center p-4">
   <h1 class="text-3xl font-bold mb-6">Area Status Grid</h1>
   <!-- 7 modules × 6 areas -->
-  <div id="grid" class="grid gap-3" style="grid-template-columns: 110px repeat(6,160px);"></div>
-
-  <!-- Modal for editing + timeline -->
-  <div id="modal" class="fixed inset-0 hidden items-center justify-center bg-black/50">
-    <div class="bg-white rounded-lg shadow-xl p-6 w-96">
+  <div id="grid" class="grid gap-3" style="grid-template-columns: 110px repeat(6,160px);"></div>  <!-- Modal for editing + timeline -->  <div id="modal" class="fixed inset-0 hidden items-center justify-center bg-black/50">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-96" @click.stop>
       <h2 id="modalTitle" class="text-xl font-semibold mb-4">Update Area</h2>
       <input id="statusInput" type="text" maxlength="50" class="w-full border rounded p-2 mb-3" placeholder="Enter status" />
       <div>
@@ -26,10 +22,7 @@
         <button id="saveBtn" class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">Save</button>
       </div>
     </div>
-  </div>
-
-  <!-- Firebase + app code -->
-  <script type="module">
+  </div>  <!-- Firebase + app code -->  <script type="module">
     // ───────────────── Firebase initialisation ─────────────────
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
     import {
@@ -37,7 +30,7 @@
       doc,
       onSnapshot,
       runTransaction,
-      serverTimestamp
+      Timestamp
     } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
     /*
@@ -77,7 +70,7 @@
 
     // ───────────────── Helpers ─────────────────
     const areaId = (r, c) => `${r}_${c}`; // Firestore doc id
-    const fmt    = ts => ts ? new Date(ts.seconds * 1000).toLocaleString() : "";
+    const fmt    = ts => ts ? (ts.toDate ? ts.toDate().toLocaleString() : new Date(ts).toLocaleString()) : "";
 
     // Build static grid skeleton & attach listeners
     function buildGrid() {
@@ -138,7 +131,6 @@
     function openModal(row, col) {
       currentArea = { row, col };
       modalTitle.textContent = `Update Module ${row + 1} – Area ${col + 1}`;
-      statusInput.value = "";
       historyList.innerHTML = "";
       modal.classList.remove("hidden");
       statusInput.focus();
@@ -146,8 +138,8 @@
       // Load current doc + history (live)
       const ref = doc(db, "areas", areaId(row, col));
       onSnapshot(ref, snap => {
-        const data = snap.data();
         if (!currentArea || currentArea.row !== row || currentArea.col !== col) return; // modal switched
+        const data = snap.data();
 
         statusInput.value = data?.status ?? "";
         // Render history (latest first)
@@ -172,21 +164,29 @@
       const newStatus = statusInput.value.trim();
       const ref = doc(db, "areas", areaId(currentArea.row, currentArea.col));
 
-      await runTransaction(db, async transaction => {
-        const snap    = await transaction.get(ref);
-        const data    = snap.data() || {};
-        const history = data.history || [];
-        history.push({ status: newStatus, updatedAt: serverTimestamp() });
-        if (history.length > 50) history.shift(); // keep last 50 entries
+      try {
+        await runTransaction(db, async transaction => {
+          const snap    = await transaction.get(ref);
+          const data    = snap.exists() ? snap.data() : {};
+          const history = Array.isArray(data.history) ? data.history : [];
 
-        transaction.set(ref, {
-          status: newStatus,
-          updatedAt: serverTimestamp(),
-          history
-        }, { merge: true });
-      });
+          // 👇 Use a *real* Timestamp value inside the array (NOT FieldValue.serverTimestamp())
+          const nowTs = Timestamp.now();
+          history.push({ status: newStatus, updatedAt: nowTs });
+          if (history.length > 50) history.shift(); // keep last 50 entries
 
-      closeModal();
+          transaction.set(ref, {
+            status: newStatus,
+            updatedAt: nowTs,   // ok to store server time here as real Timestamp
+            history
+          }, { merge: true });
+        });
+
+        closeModal();
+      } catch (err) {
+        alert(`Failed to save – ${err.message}`);
+        console.error(err);
+      }
     }
 
     // ───────────────── Event listeners ─────────────────
@@ -198,6 +198,5 @@
 
     // ───────────────── Kick-off ─────────────────
     buildGrid();
-  </script>
-</body>
+  </script></body>
 </html>
