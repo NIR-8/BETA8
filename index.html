@@ -40,14 +40,16 @@
       4️⃣  (Optional) Update security rules so anyone can read but only authenticated users can write.
           For a demo you can temporarily allow read/write:  allow read, write: true;  (NOT for prod!)
     */
-    const firebaseConfig = {
-      apiKey: "YOUR_KEY",
-      authDomain: "YOUR_PROJECT.firebaseapp.com",
-      projectId: "YOUR_PROJECT",
-      storageBucket: "YOUR_PROJECT.appspot.com",
-      messagingSenderId: "YOUR_MSG_ID",
-      appId: "YOUR_APP_ID"
-    };
+    
+const firebaseConfig = {
+  apiKey: "AIzaSyAfGzkSg6U49-wXy-mvMd2OdqJ3qHo5Ouk",
+  authDomain: "beta8-434f9.firebaseapp.com",
+  projectId: "beta8-434f9",
+  storageBucket: "beta8-434f9.firebasestorage.app",
+  messagingSenderId: "948269597618",
+  appId: "1:948269597618:web:506b43105b755686a01aab",
+  measurementId: "G-YCF71WWJ97"
+};
 
     const app   = initializeApp(firebaseConfig);
     const db    = getFirestore(app);
