@@ -1,43 +1,67 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Timestamp Tracker</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Timestamp Tracker — Encrypted Linked Updates</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-50 min-h-screen flex flex-col items-center p-6">
+<body class="min-h-screen bg-gray-50 flex flex-col items-center p-6">
 
-  <h1 class="text-2xl font-bold mb-4">Timestamp Tracker</h1>
+  <h1 class="text-2xl font-bold mb-4">Timestamp Tracker (Encrypted)</h1>
 
-  <!-- Input form -->
-  <div class="w-full max-w-md bg-white p-4 rounded shadow">
-    <input 
-      id="updateInput" 
-      type="text" 
-      maxlength="200"
-      placeholder="Enter your update..."
-      class="border w-full rounded p-2 mb-3"
-    />
-    <button 
-      id="saveBtn"
-      class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded"
-    >Save Update</button>
+  <!-- Passphrase modal -->
+  <div id="passModal" class="fixed inset-0 bg-black/50 flex items-center justify-center">
+    <div class="bg-white rounded p-6 w-full max-w-md">
+      <h2 class="text-lg font-semibold mb-2">Enter your passphrase</h2>
+      <p class="text-sm text-gray-600 mb-3">
+        This passphrase derives the encryption key. It is <strong>never</strong> sent to the server. Keep it safe.
+      </p>
+      <input id="passInput" type="password" class="w-full border rounded p-2 mb-3" placeholder="Passphrase"/>
+      <div class="flex gap-2 justify-end">
+        <button id="continueBtn" class="px-4 py-2 bg-blue-600 text-white rounded">Continue</button>
+      </div>
+      <p id="passMsg" class="text-sm text-red-600 mt-2 hidden"></p>
+    </div>
   </div>
 
-  <!-- Update list -->
-  <div class="w-full max-w-md mt-6">
-    <h2 class="font-semibold mb-2">History</h2>
-    <ul id="updateList" class="space-y-2"></ul>
+  <!-- Main UI -->
+  <div id="app" class="w-full max-w-md hidden">
+    <div class="bg-white p-4 rounded shadow mb-4">
+      <label class="block mb-2 font-medium">New update</label>
+      <input id="updateInput" type="text" maxlength="1000" class="w-full border rounded p-2 mb-3" placeholder="Write your update and press Save or Enter">
+      <div class="flex gap-2">
+        <button id="saveBtn" class="flex-1 bg-green-600 text-white py-2 rounded">Save Update</button>
+        <button id="clearBtn" class="px-3 py-2 bg-gray-200 rounded">Clear</button>
+      </div>
+      <p class="text-xs text-gray-500 mt-2">Latest update will be linked to the previous one automatically.</p>
+    </div>
+
+    <div class="bg-white p-4 rounded shadow">
+      <h2 class="font-semibold mb-3">History (latest first)</h2>
+      <ul id="historyList" class="space-y-2 max-h-72 overflow-y-auto"></ul>
+    </div>
   </div>
 
   <script type="module">
+    // -------------------------------
+    // Firebase imports
+    // -------------------------------
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-    import { 
-      getFirestore, doc, getDoc, runTransaction, onSnapshot, Timestamp 
+    import {
+      getFirestore,
+      doc,
+      collection,
+      getDoc,
+      setDoc,
+      onSnapshot,
+      runTransaction,
+      Timestamp
     } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
-    // Firebase config (yours)
+    // -------------------------------
+    // Your Firebase config (kept from original)
+    // -------------------------------
     const firebaseConfig = {
       apiKey: "AIzaSyAfGzkSg6U49-wXy-mvMd2OdqJ3qHo5Ouk",
       authDomain: "beta8-434f9.firebaseapp.com",
@@ -48,62 +72,310 @@
       measurementId: "G-YCF71WWJ97"
     };
 
-    const app = initializeApp(firebaseConfig);
-    const db  = getFirestore(app);
+    const app  = initializeApp(firebaseConfig);
+    const db   = getFirestore(app);
 
-    // DOM
-    const inputEl = document.getElementById("updateInput");
-    const saveBtn = document.getElementById("saveBtn");
-    const listEl  = document.getElementById("updateList");
+    // -------------------------------
+    // DOM refs
+    // -------------------------------
+    const passModal   = document.getElementById("passModal");
+    const passInput   = document.getElementById("passInput");
+    const continueBtn = document.getElementById("continueBtn");
+    const passMsg     = document.getElementById("passMsg");
 
-    const docRef = doc(db, "timestampTracker", "main");
+    const appEl       = document.getElementById("app");
+    const updateInput = document.getElementById("updateInput");
+    const saveBtn     = document.getElementById("saveBtn");
+    const clearBtn    = document.getElementById("clearBtn");
+    const historyList = document.getElementById("historyList");
 
-    // Format helper
-    const fmt = ts => ts?.toDate?.().toLocaleString() ?? "";
+    // -------------------------------
+    // Firestore refs
+    // -------------------------------
+    const metaRef  = doc(db, "timestampTracker", "meta");
+    const entriesCol = collection(db, "entries");
 
-    // Render updates
-    function renderList(history) {
-      listEl.innerHTML = "";
-      history.forEach(entry => {
+    // -------------------------------
+    // Crypto helpers (Web Crypto API)
+    // -------------------------------
+    // base64 utils
+    const toBase64 = (buf) => {
+      const bytes = new Uint8Array(buf);
+      let binary = "";
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      return btoa(binary);
+    };
+    const fromBase64 = (b64) => {
+      const binary = atob(b64);
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes.buffer;
+    };
+    const str2ab = (str) => new TextEncoder().encode(str);
+    const ab2str = (ab) => new TextDecoder().decode(ab);
+
+    // derive AES-GCM key from passphrase + salt (Uint8Array)
+    async function deriveKey(passphrase, salt, iterations = 200000) {
+      const passKey = await crypto.subtle.importKey(
+        "raw",
+        str2ab(passphrase),
+        "PBKDF2",
+        false,
+        ["deriveKey"]
+      );
+      const key = await crypto.subtle.deriveKey(
+        { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
+        passKey,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt", "decrypt"]
+      );
+      return key;
+    }
+
+    async function encryptText(key, plaintext) {
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const ct = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        key,
+        str2ab(plaintext)
+      );
+      return { cipher: toBase64(ct), iv: toBase64(iv) };
+    }
+
+    async function decryptText(key, cipherB64, ivB64) {
+      try {
+        const ctBuf = fromBase64(cipherB64);
+        const ivBuf = fromBase64(ivB64);
+        const plainBuf = await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: new Uint8Array(ivBuf) },
+          key,
+          ctBuf
+        );
+        return ab2str(plainBuf);
+      } catch (e) {
+        throw new Error("Decryption failed (wrong passphrase or corrupted data).");
+      }
+    }
+
+    // -------------------------------
+    // App state
+    // -------------------------------
+    let cryptoKey = null;   // AES-GCM CryptoKey derived from passphrase
+    let saltBytes = null;   // Uint8Array salt read from meta or generated
+    let latestId  = null;   // current latest entry id (string or null)
+    const MAX_CHAIN = 200;  // safety limit to avoid infinite loops
+
+    // format timestamp to readable string
+    const fmt = (ts) => ts?.toDate?.()?.toLocaleString?.() ?? "";
+
+    // -------------------------------
+    // UI helpers
+    // -------------------------------
+    function showApp() {
+      passModal.classList.add("hidden");
+      appEl.classList.remove("hidden");
+    }
+    function showPassError(msg) {
+      passMsg.textContent = msg;
+      passMsg.classList.remove("hidden");
+    }
+    function hidePassError() {
+      passMsg.classList.add("hidden");
+    }
+
+    // Render the decrypted chain (array of {id, text, ts})
+    function renderHistory(items) {
+      historyList.innerHTML = "";
+      for (const item of items) {
         const li = document.createElement("li");
-        li.className = "p-3 bg-white rounded shadow flex justify-between items-center";
+        li.className = "p-3 bg-white rounded shadow flex justify-between items-start gap-3";
         li.innerHTML = `
-          <span>${entry.text || "(empty)"}</span>
-          <span class="text-xs text-gray-500">${fmt(entry.updatedAt)}</span>
+          <div class="text-sm break-words">${escapeHtml(item.text)}</div>
+          <div class="text-xs text-gray-500 text-right">${fmt(item.ts)}</div>
         `;
-        listEl.appendChild(li);
-      });
+        historyList.appendChild(li);
+      }
     }
 
-    // Live listener
-    onSnapshot(docRef, snap => {
-      const data = snap.data();
-      const history = data?.history ?? [];
-      renderList(history);
-    });
+    // sanitize text for innerHTML insertion (minimal)
+    function escapeHtml(unsafe) {
+      return (unsafe + "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
 
-    // Save new update
-    async function saveUpdate() {
-      const text = inputEl.value.trim();
-      if (!text) return;
+    // -------------------------------
+    // Core: get or create salt from meta doc
+    // -------------------------------
+    async function ensureSaltInMeta(txOrNull) {
+      // If saltBytes already set in memory, return it.
+      if (saltBytes) return saltBytes;
+
+      // Try to read existing meta doc
+      const metaSnap = await getDoc(metaRef);
+      const metaData = metaSnap.exists() ? metaSnap.data() : {};
+
+      if (metaData.salt) {
+        saltBytes = new Uint8Array(fromBase64(metaData.salt));
+        return saltBytes;
+      }
+
+      // If salt not present create a new random one and save it in meta (do a non-transactional set is fine:
+      const newSalt = crypto.getRandomValues(new Uint8Array(16));
+      saltBytes = newSalt;
+      // Write salt to meta with merge so we don't overwrite other fields
+      await setDoc(metaRef, { salt: toBase64(newSalt) }, { merge: true });
+      return saltBytes;
+    }
+
+    // -------------------------------
+    // Transactional create entry: create new doc in entries, link prev, update meta.latestId
+    // -------------------------------
+    async function createEntryEncrypted(encryptedObj) {
+      // encryptedObj: { cipher: base64, iv: base64 }
+      // We'll create a new doc with auto-id inside transaction:
       await runTransaction(db, async (tx) => {
-        const snap = await tx.get(docRef);
-        const data = snap.exists() ? snap.data() : {};
-        const history = Array.isArray(data.history) ? data.history : [];
+        const metaSnap = await tx.get(metaRef);
+        const meta = metaSnap.exists() ? metaSnap.data() : {};
+        const prev = meta.latestId ?? null;
 
-        const nowTs = Timestamp.now();
-        // Insert new at top
-        history.unshift({ text, updatedAt: nowTs });
+        // create an auto-id doc reference
+        // Unfortunately runTransaction doesn't expose a built-in "add" helper; we create an id client-side:
+        const newDocRef = doc(entriesCol); // auto-id
+        tx.set(newDocRef, {
+          cipher: encryptedObj.cipher,
+          iv: encryptedObj.iv,
+          ts: Timestamp.now(),
+          prevId: prev
+        });
 
-        tx.set(docRef, { history }, { merge: true });
+        // update meta.latestId
+        tx.set(metaRef, { latestId: newDocRef.id }, { merge: true });
       });
-      inputEl.value = "";
     }
 
-    saveBtn.addEventListener("click", saveUpdate);
-    inputEl.addEventListener("keydown", e => {
-      if (e.key === "Enter") saveUpdate();
+    // -------------------------------
+    // Traverse chain from latestId and decrypt each entry (latest-first)
+    // -------------------------------
+    async function fetchAndDecryptChain(startId, limit = MAX_CHAIN) {
+      const results = [];
+      let currentId = startId;
+      let safety = 0;
+
+      while (currentId && safety < limit) {
+        safety++;
+        const ref = doc(db, "entries", currentId);
+        const snap = await getDoc(ref);
+        if (!snap.exists()) break;
+        const data = snap.data();
+        // decrypt
+        try {
+          const text = await decryptText(cryptoKey, data.cipher, data.iv);
+          results.push({ id: currentId, text, ts: data.ts || null });
+        } catch (e) {
+          // decryption failed — stop and show message
+          throw new Error("One or more entries could not be decrypted. Maybe wrong passphrase?");
+        }
+        currentId = data.prevId ?? null;
+      }
+      return results; // latest-first array
+    }
+
+    // -------------------------------
+    // Wiring: when meta.latestId changes, re-fetch chain and display
+    // -------------------------------
+    function startMetaListener() {
+      onSnapshot(metaRef, async (snap) => {
+        const meta = snap.exists() ? snap.data() : {};
+        const newLatest = meta.latestId ?? null;
+        latestId = newLatest;
+        if (!latestId) {
+          renderHistory([]); // empty
+          return;
+        }
+        try {
+          const chain = await fetchAndDecryptChain(latestId);
+          renderHistory(chain);
+        } catch (err) {
+          // show error in UI (use passMsg area)
+          showPassError(err.message);
+        }
+      });
+    }
+
+    // -------------------------------
+    // Initialize after passphrase entered
+    // -------------------------------
+    continueBtn.addEventListener("click", async () => {
+      hidePassError();
+      const pass = passInput.value || "";
+      if (!pass) {
+        showPassError("Enter a passphrase to proceed.");
+        return;
+      }
+
+      try {
+        // ensure salt exists (creates one if not present)
+        await ensureSaltInMeta();
+
+        // derive key
+        cryptoKey = await deriveKey(pass, saltBytes);
+
+        // start listening to meta changes and display UI
+        startMetaListener();
+
+        // show main UI
+        showApp();
+        updateInput.focus();
+      } catch (err) {
+        console.error(err);
+        showPassError("Failed to initialize crypto: " + err.message);
+      }
     });
+
+    // allow Enter key on pass modal
+    passInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") continueBtn.click();
+    });
+
+    // -------------------------------
+    // Save new update: encrypt locally and create entry in Firestore
+    // -------------------------------
+    saveBtn.addEventListener("click", async () => {
+      const text = updateInput.value.trim();
+      if (!text) return;
+      if (!cryptoKey) {
+        showPassError("Missing crypto key. Reload and enter passphrase.");
+        return;
+      }
+
+      try {
+        // encrypt
+        const enc = await encryptText(cryptoKey, text);
+        // create entry and atomically update latest pointer
+        await createEntryEncrypted(enc);
+        updateInput.value = "";
+      } catch (err) {
+        console.error(err);
+        showPassError("Failed to save: " + err.message);
+      }
+    });
+
+    updateInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") saveBtn.click();
+    });
+
+    clearBtn.addEventListener("click", () => updateInput.value = "");
+
+    // -------------------------------
+    // On first load, we want the pass modal visible. But we could pre-fill passInput if desired.
+    // -------------------------------
+    // Already visible by default in HTML.
 
   </script>
 </body>
