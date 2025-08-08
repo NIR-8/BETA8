@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Timestamp Tracker</title>
+  <title>Private Timestamp Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-50 min-h-screen flex flex-col items-center p-6">
 
-  <h1 class="text-2xl font-bold mb-4">Timestamp Tracker</h1>
+  <h1 class="text-2xl font-bold mb-4">Private Timestamp Tracker</h1>
 
   <!-- Input form -->
-  <div class="w-full max-w-md bg-white p-4 rounded shadow">
+  <div class="w-full max-w-md bg-white p-4 rounded shadow hidden" id="updateSection">
     <input 
       id="updateInput" 
       type="text" 
@@ -26,7 +26,7 @@
   </div>
 
   <!-- Update list -->
-  <div class="w-full max-w-md mt-6">
+  <div class="w-full max-w-md mt-6 hidden" id="historySection">
     <h2 class="font-semibold mb-2">History</h2>
     <ul id="updateList" class="space-y-2"></ul>
   </div>
@@ -34,7 +34,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
     import { 
-      getFirestore, doc, getDoc, runTransaction, onSnapshot, Timestamp 
+      getFirestore, doc, getDoc, setDoc, runTransaction, onSnapshot, Timestamp
     } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
     // Firebase config (yours)
@@ -51,52 +51,96 @@
     const app = initializeApp(firebaseConfig);
     const db  = getFirestore(app);
 
-    // DOM
+    // DOM refs
     const inputEl = document.getElementById("updateInput");
     const saveBtn = document.getElementById("saveBtn");
     const listEl  = document.getElementById("updateList");
+    const updateSection = document.getElementById("updateSection");
+    const historySection = document.getElementById("historySection");
 
-    const docRef = doc(db, "timestampTracker", "main");
+    let channelPasscode = null;
+    let userId = null;
+    let docRef = null;
 
     // Format helper
     const fmt = ts => ts?.toDate?.().toLocaleString() ?? "";
 
-    // Render updates
+    // Render updates (latest first)
     function renderList(history) {
       listEl.innerHTML = "";
       history.forEach(entry => {
         const li = document.createElement("li");
         li.className = "p-3 bg-white rounded shadow flex justify-between items-center";
         li.innerHTML = `
-          <span>${entry.text || "(empty)"}</span>
+          <div>
+            <span class="block font-medium">${entry.text || "(empty)"}</span>
+            <span class="text-xs text-gray-500">By: ${entry.userId || "unknown"}</span>
+          </div>
           <span class="text-xs text-gray-500">${fmt(entry.updatedAt)}</span>
         `;
         listEl.appendChild(li);
       });
     }
 
-    // Live listener
-    onSnapshot(docRef, snap => {
-      const data = snap.data();
-      const history = data?.history ?? [];
-      renderList(history);
-    });
+    // Ask for passcode & user id
+    async function initApp() {
+      channelPasscode = prompt("Enter passcode for your channel:");
+      if (!channelPasscode) return;
 
-    // Save new update
+      docRef = doc(db, "channels", channelPasscode);
+
+      const snap = await getDoc(docRef);
+      if (!snap.exists()) {
+        if (confirm("Channel does not exist. Create it?")) {
+          await setDoc(docRef, { history: [] });
+          alert("Channel created successfully.");
+        } else {
+          location.reload();
+          return;
+        }
+      }
+
+      // Ask for userId (once per browser, per passcode)
+      const storedUserId = localStorage.getItem("timestamp_userId_" + channelPasscode);
+      if (storedUserId) {
+        userId = storedUserId;
+      } else {
+        userId = prompt("Enter a unique User ID for this channel:");
+        if (!userId) return;
+        localStorage.setItem("timestamp_userId_" + channelPasscode, userId);
+      }
+
+      // Show UI
+      updateSection.classList.remove("hidden");
+      historySection.classList.remove("hidden");
+
+      // Live listener for updates
+      onSnapshot(docRef, snap => {
+        const data = snap.data();
+        const history = data?.history ?? [];
+        renderList(history);
+      });
+    }
+
+    // Save new update (linked list style)
     async function saveUpdate() {
       const text = inputEl.value.trim();
       if (!text) return;
+
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(docRef);
-        const data = snap.exists() ? snap.data() : {};
+        const data = snap.exists() ? snap.data() : { history: [] };
         const history = Array.isArray(data.history) ? data.history : [];
 
         const nowTs = Timestamp.now();
-        // Insert new at top
-        history.unshift({ text, updatedAt: nowTs });
+        const prevId = history.length > 0 ? history[0].id : null;
+        const newId = nowTs.seconds + "_" + Math.random().toString(36).slice(2,8);
+
+        history.unshift({ id: newId, text, updatedAt: nowTs, userId, prevId });
 
         tx.set(docRef, { history }, { merge: true });
       });
+
       inputEl.value = "";
     }
 
@@ -105,6 +149,7 @@
       if (e.key === "Enter") saveUpdate();
     });
 
+    initApp();
   </script>
 </body>
 </html>
