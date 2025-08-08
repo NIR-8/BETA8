@@ -1,102 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Encrypted Timestamp Tracker — Full</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Timestamp Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="min-h-screen bg-gray-50 flex flex-col items-center p-6">
+<body class="bg-gray-50 min-h-screen flex flex-col items-center p-6">
 
-  <h1 class="text-2xl font-bold mb-4">Encrypted Timestamp Tracker</h1>
+  <h1 class="text-2xl font-bold mb-4">Timestamp Tracker</h1>
 
-  <!-- Auth card -->
-  <div id="authCard" class="w-full max-w-md bg-white p-4 rounded shadow mb-4">
-    <h2 class="font-semibold mb-2">Sign in / Sign up</h2>
-    <input id="email" type="email" placeholder="Email" class="w-full border rounded p-2 mb-2"/>
-    <input id="password" type="password" placeholder="Password" class="w-full border rounded p-2 mb-2"/>
-    <div class="flex gap-2">
-      <button id="signInBtn" class="flex-1 bg-blue-600 text-white py-2 rounded">Sign In</button>
-      <button id="signUpBtn" class="flex-1 bg-gray-200 py-2 rounded">Sign Up</button>
-    </div>
-    <p id="authMsg" class="text-sm text-red-600 mt-2 hidden"></p>
+  <!-- Input form -->
+  <div class="w-full max-w-md bg-white p-4 rounded shadow">
+    <input 
+      id="updateInput" 
+      type="text" 
+      maxlength="200"
+      placeholder="Enter your update..."
+      class="border w-full rounded p-2 mb-3"
+    />
+    <button 
+      id="saveBtn"
+      class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded"
+    >Save Update</button>
   </div>
 
-  <!-- Passphrase / key UI -->
-  <div id="passCard" class="w-full max-w-md bg-white p-4 rounded shadow mb-4 hidden">
-    <h2 class="font-semibold mb-2">Passphrase (local key)</h2>
-    <input id="passInput" type="password" placeholder="Enter passphrase" class="w-full border rounded p-2 mb-2"/>
-    <div class="flex items-center gap-2 mb-2">
-      <div id="strengthBar" class="h-2 flex-1 bg-gray-200 rounded overflow-hidden">
-        <div id="strengthFill" class="h-full w-0"></div>
-      </div>
-      <div id="strengthText" class="text-xs w-24 text-right text-gray-600">—</div>
-    </div>
-    <div class="flex gap-2">
-      <button id="unlockBtn" class="flex-1 bg-green-600 text-white py-2 rounded">Unlock</button>
-      <button id="changePassBtn" class="px-3 py-2 bg-yellow-400 rounded">Change Passphrase</button>
-    </div>
-    <p id="passMsg" class="text-sm text-red-600 mt-2 hidden"></p>
-  </div>
-
-  <!-- Change Passphrase modal -->
-  <div id="changeModal" class="fixed inset-0 hidden items-center justify-center bg-black/50">
-    <div class="bg-white rounded p-6 w-full max-w-lg">
-      <h3 class="font-semibold mb-2">Change passphrase</h3>
-      <p class="text-sm text-gray-600 mb-3">You must enter your current passphrase to decrypt, then a new passphrase to re-encrypt all entries. This will re-write all entries (encrypted) for your user.</p>
-      <input id="curPass" type="password" placeholder="Current passphrase" class="w-full border rounded p-2 mb-2"/>
-      <input id="newPass" type="password" placeholder="New passphrase" class="w-full border rounded p-2 mb-2"/>
-      <div class="flex justify-end gap-2 mt-2">
-        <button id="cancelChange" class="px-4 py-2 bg-gray-200 rounded">Cancel</button>
-        <button id="confirmChange" class="px-4 py-2 bg-red-600 text-white rounded">Re-encrypt & Save</button>
-      </div>
-      <p id="changeMsg" class="text-sm text-red-600 mt-2 hidden"></p>
-    </div>
-  </div>
-
-  <!-- Main app -->
-  <div id="app" class="w-full max-w-md hidden">
-    <div class="bg-white p-4 rounded shadow mb-4">
-      <label class="block mb-2 font-medium">New update</label>
-      <input id="updateInput" type="text" maxlength="1000" class="w-full border rounded p-2 mb-3" placeholder="Write update and press Save or Enter"/>
-      <div class="flex gap-2">
-        <button id="saveBtn" class="flex-1 bg-green-600 text-white py-2 rounded">Save Update</button>
-        <button id="signOutBtn" class="px-3 py-2 bg-gray-200 rounded">Sign Out</button>
-      </div>
-      <div class="text-xs text-gray-500 mt-2">Entries are encrypted client-side. The server stores only ciphertext & metadata.</div>
-    </div>
-
-    <div class="bg-white p-4 rounded shadow w-full mb-4">
-      <h2 class="font-semibold mb-3">History (latest first)</h2>
-      <ul id="historyList" class="space-y-2 max-h-72 overflow-y-auto"></ul>
-      <div class="mt-3 flex justify-center">
-        <button id="loadMore" class="px-3 py-2 bg-indigo-600 text-white rounded">Load more</button>
-      </div>
-    </div>
-
-    <details class="bg-white p-3 rounded shadow w-full">
-      <summary class="font-semibold">Debug / IDs (toggle)</summary>
-      <pre id="debug" class="text-xs mt-2 break-words"></pre>
-    </details>
+  <!-- Update list -->
+  <div class="w-full max-w-md mt-6">
+    <h2 class="font-semibold mb-2">History</h2>
+    <ul id="updateList" class="space-y-2"></ul>
   </div>
 
   <script type="module">
-    // ---------------------------
-    // Firebase imports
-    // ---------------------------
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-    import {
-      getFirestore,
-      doc, collection, getDoc, setDoc, getDocs, query, where,
-      onSnapshot, runTransaction, Timestamp, writeBatch, orderBy, limit, startAfter
+    import { 
+      getFirestore, doc, getDoc, runTransaction, onSnapshot, Timestamp 
     } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
-    import {
-      getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged
-    } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 
-    // ---------------------------
-    // Replace with your Firebase config if needed
-    // ---------------------------
+    // Firebase config (yours)
     const firebaseConfig = {
       apiKey: "AIzaSyAfGzkSg6U49-wXy-mvMd2OdqJ3qHo5Ouk",
       authDomain: "beta8-434f9.firebaseapp.com",
@@ -108,479 +49,62 @@
     };
 
     const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const auth = getAuth(app);
+    const db  = getFirestore(app);
 
-    // ---------------------------
-    // DOM refs
-    // ---------------------------
-    const authCard = document.getElementById("authCard");
-    const emailEl = document.getElementById("email");
-    const passEl = document.getElementById("password");
-    const signInBtn = document.getElementById("signInBtn");
-    const signUpBtn = document.getElementById("signUpBtn");
-    const authMsg = document.getElementById("authMsg");
-
-    const passCard = document.getElementById("passCard");
-    const passInput = document.getElementById("passInput");
-    const unlockBtn = document.getElementById("unlockBtn");
-    const changePassBtn = document.getElementById("changePassBtn");
-    const passMsg = document.getElementById("passMsg");
-    const strengthBar = document.getElementById("strengthBar");
-    const strengthFill = document.getElementById("strengthFill");
-    const strengthText = document.getElementById("strengthText");
-
-    const changeModal = document.getElementById("changeModal");
-    const curPass = document.getElementById("curPass");
-    const newPass = document.getElementById("newPass");
-    const cancelChange = document.getElementById("cancelChange");
-    const confirmChange = document.getElementById("confirmChange");
-    const changeMsg = document.getElementById("changeMsg");
-
-    const appEl = document.getElementById("app");
-    const updateInput = document.getElementById("updateInput");
+    // DOM
+    const inputEl = document.getElementById("updateInput");
     const saveBtn = document.getElementById("saveBtn");
-    const signOutBtn = document.getElementById("signOutBtn");
-    const historyList = document.getElementById("historyList");
-    const loadMoreBtn = document.getElementById("loadMore");
-    const debugEl = document.getElementById("debug");
+    const listEl  = document.getElementById("updateList");
 
-    // ---------------------------
-    // Crypto helpers (Web Crypto)
-    // ---------------------------
-    const toBase64 = (buf) => {
-      const bytes = new Uint8Array(buf);
-      let binary = "";
-      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-      return btoa(binary);
-    };
-    const fromBase64 = (b64) => {
-      const binary = atob(b64);
-      const len = binary.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-      return bytes.buffer;
-    };
-    const str2ab = (str) => new TextEncoder().encode(str);
-    const ab2str = (ab) => new TextDecoder().decode(ab);
+    const docRef = doc(db, "timestampTracker", "main");
 
-    async function deriveKey(passphrase, salt, iterations = 200000) {
-      const passKey = await crypto.subtle.importKey("raw", str2ab(passphrase), "PBKDF2", false, ["deriveKey"]);
-      const key = await crypto.subtle.deriveKey(
-        { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
-        passKey,
-        { name: "AES-GCM", length: 256 },
-        false,
-        ["encrypt", "decrypt"]
-      );
-      return key;
-    }
-    async function encryptText(key, plaintext) {
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, str2ab(plaintext));
-      return { cipher: toBase64(ct), iv: toBase64(iv) };
-    }
-    async function decryptText(key, cipherB64, ivB64) {
-      try {
-        const ctBuf = fromBase64(cipherB64);
-        const ivBuf = new Uint8Array(fromBase64(ivB64));
-        const plainBuf = await crypto.subtle.decrypt({ name: "AES-GCM", iv: ivBuf }, key, ctBuf);
-        return ab2str(plainBuf);
-      } catch (e) {
-        throw new Error("Decryption failed (wrong passphrase or corrupted data).");
-      }
-    }
+    // Format helper
+    const fmt = ts => ts?.toDate?.().toLocaleString() ?? "";
 
-    function escapeHtml(unsafe){ return (unsafe+"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;"); }
-
-    // ---------------------------
-    // App state
-    // ---------------------------
-    let user = null;
-    let cryptoKey = null;
-    let saltBytes = null;
-    let latestId = null;
-    const PAGE_SIZE = 8;          // items per page
-    let lastFetchedIds = [];      // for pagination (holds last seen ids)
-    let metaUnsub = null;
-
-    // Firestore document structure:
-    // /users/{uid}/meta -> { latestId: "...", salt: "base64" }
-    // /users/{uid}/entries/{entryId} -> { cipher, iv, ts, prevId }
-
-    // ---------------------------
-    // Helper: user-scoped refs
-    // ---------------------------
-    const userMetaRef = (uid) => doc(db, "users", uid, "meta", "meta");
-    const userEntriesCol = (uid) => collection(db, "users", uid, "entries");
-
-    // ---------------------------
-    // Auth flows
-    // ---------------------------
-    signUpBtn.addEventListener("click", async () => {
-      authMsg.classList.add("hidden");
-      try {
-        const e = emailEl.value.trim();
-        const p = passEl.value;
-        if (!e || !p) throw new Error("Enter email & password.");
-        await createUserWithEmailAndPassword(auth, e, p);
-        // onAuthStateChanged will handle UI
-      } catch (err) {
-        authMsg.textContent = err.message;
-        authMsg.classList.remove("hidden");
-      }
-    });
-
-    signInBtn.addEventListener("click", async () => {
-      authMsg.classList.add("hidden");
-      try {
-        const e = emailEl.value.trim();
-        const p = passEl.value;
-        if (!e || !p) throw new Error("Enter email & password.");
-        await signInWithEmailAndPassword(auth, e, p);
-      } catch (err) {
-        authMsg.textContent = err.message;
-        authMsg.classList.remove("hidden");
-      }
-    });
-
-    signOutBtn.addEventListener("click", async () => {
-      await signOut(auth);
-    });
-
-    onAuthStateChanged(auth, (u) => {
-      user = u;
-      if (user) {
-        authCard.classList.add("hidden");
-        passCard.classList.remove("hidden");
-      } else {
-        authCard.classList.remove("hidden");
-        passCard.classList.add("hidden");
-        appEl.classList.add("hidden");
-        if (metaUnsub) { metaUnsub(); metaUnsub = null; }
-      }
-    });
-
-    // ---------------------------
-    // Ensure salt exists for this user
-    // ---------------------------
-    async function ensureSalt(uid) {
-      if (saltBytes) return saltBytes;
-      const metaRef = userMetaRef(uid);
-      const snap = await getDoc(metaRef);
-      const data = snap.exists() ? snap.data() : {};
-      if (data.salt) {
-        saltBytes = new Uint8Array(fromBase64(data.salt));
-        return saltBytes;
-      }
-      // create and store new salt
-      const newSalt = crypto.getRandomValues(new Uint8Array(16));
-      saltBytes = newSalt;
-      await setDoc(metaRef, { salt: toBase64(newSalt) }, { merge: true });
-      return saltBytes;
-    }
-
-    // ---------------------------
-    // Passphrase strength meter (simple heuristics)
-    // ---------------------------
-    function evaluateStrength(pw) {
-      let score = 0;
-      if (pw.length >= 8) score += 1;
-      if (pw.length >= 12) score += 1;
-      if (/[A-Z]/.test(pw)) score += 1;
-      if (/[0-9]/.test(pw)) score += 1;
-      if (/[^A-Za-z0-9]/.test(pw)) score += 1;
-      return score; // 0..5
-    }
-    function updateStrengthUI() {
-      const v = passInput.value || "";
-      const s = evaluateStrength(v);
-      const pct = (s / 5) * 100;
-      strengthFill.style.width = pct + "%";
-      strengthFill.style.backgroundColor = s <= 1 ? "#ef4444" : s <= 3 ? "#f59e0b" : "#10b981";
-      const labels = ["Very weak","Weak","Okay","Good","Strong","Excellent"];
-      strengthText.textContent = labels[s];
-    }
-    passInput.addEventListener("input", updateStrengthUI);
-
-    // ---------------------------
-    // Unlock with passphrase -> derive key, start meta listener, show app
-    // ---------------------------
-    async function startForUser(uid) {
-      await ensureSalt(uid);
-      try {
-        const pass = passInput.value || "";
-        if (!pass) { passMsg.textContent = "Enter passphrase."; passMsg.classList.remove("hidden"); return; }
-        cryptoKey = await deriveKey(pass, saltBytes);
-        passMsg.classList.add("hidden");
-        // start listening to meta.latestId
-        startMetaListener(uid);
-        appEl.classList.remove("hidden");
-        updateInput.focus();
-      } catch (err) {
-        console.error(err);
-        passMsg.textContent = "Failed to derive key: " + err.message;
-        passMsg.classList.remove("hidden");
-      }
-    }
-    unlockBtn.addEventListener("click", async () => {
-      if (!user) { passMsg.textContent = "Sign in first."; passMsg.classList.remove("hidden"); return; }
-      await startForUser(user.uid);
-    });
-    passInput.addEventListener("keydown", (e)=> { if (e.key === "Enter") unlockBtn.click(); });
-
-    // ---------------------------
-    // Listen to meta.latestId (user-scoped)
-    // ---------------------------
-    function startMetaListener(uid) {
-      const metaRef = userMetaRef(uid);
-      if (metaUnsub) metaUnsub();
-      metaUnsub = onSnapshot(metaRef, async (snap) => {
-        const meta = snap.exists() ? snap.data() : {};
-        latestId = meta.latestId ?? null;
-        lastFetchedIds = []; // reset pagination when new latest appears
-        // Clear any debug
-        debugEl.textContent = JSON.stringify(meta, null, 2);
-        if (!latestId) {
-          renderHistory([]);
-          return;
-        }
-        try {
-          // load first page
-          const items = await fetchPage(uid, latestId, PAGE_SIZE);
-          renderHistory(items);
-        } catch (err) {
-          passMsg.textContent = err.message;
-          passMsg.classList.remove("hidden");
-        }
-      });
-    }
-
-    // ---------------------------
-    // Fetch a page by traversing prevId starting from startId
-    // returns array latest-first of {id, text, ts, prevId}
-    // ---------------------------
-    async function fetchPage(uid, startId, pageSize, cursorId = null) {
-      const results = [];
-      let currentId = cursorId ?? startId;
-      let count = 0;
-      const seen = new Set();
-      while (currentId && count < pageSize) {
-        if (seen.has(currentId)) break;
-        seen.add(currentId);
-        const ref = doc(db, "users", uid, "entries", currentId);
-        const snap = await getDoc(ref);
-        if (!snap.exists()) break;
-        const data = snap.data();
-        const text = await decryptText(cryptoKey, data.cipher, data.iv);
-        results.push({ id: currentId, text, ts: data.ts || null, prevId: data.prevId ?? null });
-        currentId = data.prevId ?? null;
-        count++;
-      }
-      // track last fetched id for pagination (the last element in results)
-      if (results.length) {
-        lastFetchedIds.push(results[results.length - 1].id);
-      }
-      return results; // already latest-first
-    }
-
-    // ---------------------------
-    // Render functions
-    // ---------------------------
-    function renderHistory(items) {
-      historyList.innerHTML = "";
-      for (const item of items) {
+    // Render updates
+    function renderList(history) {
+      listEl.innerHTML = "";
+      history.forEach(entry => {
         const li = document.createElement("li");
-        li.className = "p-3 bg-white rounded shadow flex flex-col gap-2";
+        li.className = "p-3 bg-white rounded shadow flex justify-between items-center";
         li.innerHTML = `
-          <div class="flex justify-between items-start gap-3">
-            <div class="text-sm break-words">${escapeHtml(item.text)}</div>
-            <div class="text-xs text-gray-500">${(item.ts && item.ts.toDate) ? item.ts.toDate().toLocaleString() : ""}</div>
-          </div>
-          <div class="flex justify-between items-center">
-            <button data-id="${item.id}" class="showIdBtn text-xs text-indigo-600">Show IDs</button>
-            <div class="text-xs text-gray-400" id="meta-${item.id}"></div>
-          </div>
+          <span>${entry.text || "(empty)"}</span>
+          <span class="text-xs text-gray-500">${fmt(entry.updatedAt)}</span>
         `;
-        historyList.appendChild(li);
-        const showBtn = li.querySelector(".showIdBtn");
-        showBtn.addEventListener("click", () => {
-          const metaDiv = li.querySelector(`#meta-${item.id}`);
-          if (metaDiv.innerHTML) metaDiv.innerHTML = "";
-          else metaDiv.innerHTML = `<div>ID: <code class="text-xs">${item.id}</code></div><div>prevId: <code class="text-xs">${item.prevId ?? "null"}</code></div>`;
-        });
-      }
-    }
-
-    // ---------------------------
-    // Save new encrypted entry; atomically set latestId in meta
-    // ---------------------------
-    async function saveNewEntry(uid, encrypted) {
-      await runTransaction(db, async (tx) => {
-        const metaRef = userMetaRef(uid);
-        const metaSnap = await tx.get(metaRef);
-        const meta = metaSnap.exists() ? metaSnap.data() : {};
-        const prev = meta.latestId ?? null;
-        // create auto-id entry
-        const newRef = doc(userEntriesCol(uid)); // auto-id within user's entries collection
-        tx.set(newRef, {
-          cipher: encrypted.cipher,
-          iv: encrypted.iv,
-          ts: Timestamp.now(),
-          prevId: prev
-        });
-        tx.set(metaRef, { latestId: newRef.id }, { merge: true });
+        listEl.appendChild(li);
       });
     }
 
-    // Save button
-    saveBtn.addEventListener("click", async () => {
-      if (!user) { passMsg.textContent = "Sign in first."; passMsg.classList.remove("hidden"); return; }
-      const t = updateInput.value.trim();
-      if (!t) return;
-      try {
-        const enc = await encryptText(cryptoKey, t);
-        await saveNewEntry(user.uid, enc);
-        updateInput.value = "";
-      } catch (err) {
-        passMsg.textContent = "Save failed: " + err.message;
-        passMsg.classList.remove("hidden");
-      }
-    });
-    updateInput.addEventListener("keydown", (e)=> { if (e.key === "Enter") saveBtn.click(); });
-
-    // ---------------------------
-    // Load more (pagination)
-    // ---------------------------
-    loadMoreBtn.addEventListener("click", async () => {
-      if (!latestId || !user) return;
-      const cursor = lastFetchedIds.length ? lastFetchedIds[lastFetchedIds.length - 1] : latestId;
-      try {
-        const page = await fetchPage(user.uid, latestId, PAGE_SIZE, cursor);
-        // append to existing list
-        // first get currently shown items text to avoid re-rendering entire list if small
-        // We'll do a simple append
-        for (const item of page) {
-          const li = document.createElement("li");
-          li.className = "p-3 bg-white rounded shadow flex flex-col gap-2";
-          li.innerHTML = `
-            <div class="flex justify-between items-start gap-3">
-              <div class="text-sm break-words">${escapeHtml(item.text)}</div>
-              <div class="text-xs text-gray-500">${(item.ts && item.ts.toDate) ? item.ts.toDate().toLocaleString() : ""}</div>
-            </div>
-            <div class="flex justify-between items-center">
-              <button data-id="${item.id}" class="showIdBtn text-xs text-indigo-600">Show IDs</button>
-              <div class="text-xs text-gray-400" id="meta-${item.id}"></div>
-            </div>
-          `;
-          historyList.appendChild(li);
-          const showBtn = li.querySelector(".showIdBtn");
-          showBtn.addEventListener("click", () => {
-            const metaDiv = li.querySelector(`#meta-${item.id}`);
-            if (metaDiv.innerHTML) metaDiv.innerHTML = "";
-            else metaDiv.innerHTML = `<div>ID: <code class="text-xs">${item.id}</code></div><div>prevId: <code class="text-xs">${item.prevId ?? "null"}</code></div>`;
-          });
-        }
-      } catch (err) {
-        passMsg.textContent = "Load more failed: " + err.message;
-        passMsg.classList.remove("hidden");
-      }
+    // Live listener
+    onSnapshot(docRef, snap => {
+      const data = snap.data();
+      const history = data?.history ?? [];
+      renderList(history);
     });
 
-    // ---------------------------
-    // Change passphrase: decrypt all entries and re-encrypt with new key
-    // WARNING: this rewrites every entry for the user
-    // ---------------------------
-    changePassBtn.addEventListener("click", () => {
-      changeModal.classList.remove("hidden");
-      changeMsg.classList.add("hidden");
-      curPass.value = "";
-      newPass.value = "";
-    });
-    cancelChange.addEventListener("click", () => changeModal.classList.add("hidden"));
+    // Save new update
+    async function saveUpdate() {
+      const text = inputEl.value.trim();
+      if (!text) return;
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(docRef);
+        const data = snap.exists() ? snap.data() : {};
+        const history = Array.isArray(data.history) ? data.history : [];
 
-    confirmChange.addEventListener("click", async () => {
-      changeMsg.classList.add("hidden");
-      if (!user) { changeMsg.textContent = "Sign in first."; changeMsg.classList.remove("hidden"); return; }
-      const oldP = curPass.value || "";
-      const newP = newPass.value || "";
-      if (!oldP || !newP) { changeMsg.textContent = "Enter both passphrases."; changeMsg.classList.remove("hidden"); return; }
-      try {
-        // derive old key and test decrypt a small sample (meta.latestId)
-        const oldKey = await deriveKey(oldP, saltBytes);
-        // fetch all entries by traversing from latest
-        const entries = [];
-        let cur = latestId;
-        const seen = new Set();
-        while (cur) {
-          if (seen.has(cur)) break;
-          seen.add(cur);
-          const snap = await getDoc(doc(db, "users", user.uid, "entries", cur));
-          if (!snap.exists()) break;
-          const data = snap.data();
-          const plain = await decryptText(oldKey, data.cipher, data.iv); // may throw if wrong oldP
-          entries.push({ id: cur, plain, ts: data.ts, prevId: data.prevId ?? null });
-          cur = data.prevId ?? null;
-        }
+        const nowTs = Timestamp.now();
+        // Insert new at top
+        history.unshift({ text, updatedAt: nowTs });
 
-        // derive new salt? We'll keep same salt (so change passphrase does not require changing salt).
-        const newKey = await deriveKey(newP, saltBytes);
-        // re-encrypt each entry plain -> new cipher
-        // We'll use a batch (multiple writes). For simplicity/compatibility we update entries individually but await Promise.all for speed.
-        const updates = entries.map(async e => {
-          const enc = await encryptText(newKey, e.plain);
-          const ref = doc(db, "users", user.uid, "entries", e.id);
-          return setDoc(ref, { cipher: enc.cipher, iv: enc.iv }, { merge: true });
-        });
-        await Promise.all(updates);
-
-        // replace in-memory key
-        cryptoKey = newKey;
-        changeModal.classList.add("hidden");
-        passMsg.textContent = "Passphrase changed and entries re-encrypted.";
-        passMsg.classList.remove("hidden");
-      } catch (err) {
-        console.error(err);
-        changeMsg.textContent = "Failed to change passphrase: " + err.message;
-        changeMsg.classList.remove("hidden");
-      }
-    });
-
-    // ---------------------------
-    // Utilities: initial hints
-    // ---------------------------
-    // Keep UI minimal: require sign-in first
-    // When page loads, auth UI is visible by default (handled by onAuthStateChanged)
-  </script>
-
-  <!--
-    Firestore Security Rules (PROPOSED)
-    -----------------------------------
-    Copy these into your Firebase console > Firestore > Rules, then adapt to your needs.
-
-    rules_version = '2';
-    service cloud.firestore {
-      match /databases/{database}/documents {
-        // Allow only authenticated users to access their own docs
-        match /users/{userId}/{col}/{docId} {
-          allow read, write: if request.auth != null && request.auth.uid == userId;
-        }
-        // Protect top-level meta collection shape if you use different path
-        match /users/{userId}/meta/meta {
-          allow read, write: if request.auth != null && request.auth.uid == userId;
-        }
-      }
+        tx.set(docRef, { history }, { merge: true });
+      });
+      inputEl.value = "";
     }
 
-    Notes:
-    - These rules ensure each user can only read/write their own entries/meta.
-    - You may also restrict writes: e.g., require fields `cipher` and `iv` exist and are strings, `ts` to be a timestamp, etc.
-    - For admin workflows (recoveries, batch changes) use a trusted server key with Admin SDK.
-  -->
+    saveBtn.addEventListener("click", saveUpdate);
+    inputEl.addEventListener("keydown", e => {
+      if (e.key === "Enter") saveUpdate();
+    });
 
-  <style>
-    /* tiny extra styles for strength bar transition */
-    #strengthFill { transition: width 200ms ease; height:100%; }
-  </style>
+  </script>
 </body>
 </html>
