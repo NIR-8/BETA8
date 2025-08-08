@@ -1,204 +1,110 @@
-<!DOCTYPE html><html lang="en">
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Area Status Grid – Fixed</title>
-  <!-- Tailwind (CDN) for quick styling -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Timestamp Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="min-h-screen bg-gray-50 flex flex-col items-center p-4">
-  <h1 class="text-3xl font-bold mb-6">Area Status Grid</h1>
-  <!-- 7 modules × 6 areas -->
-  <div id="grid" class="grid gap-3" style="grid-template-columns: 110px repeat(6,160px);"></div>  <!-- Modal for editing + timeline -->  <div id="modal" class="fixed inset-0 hidden items-center justify-center bg-black/50">
-    <div class="bg-white rounded-lg shadow-xl p-6 w-96" @click.stop>
-      <h2 id="modalTitle" class="text-xl font-semibold mb-4">Update Area</h2>
-      <input id="statusInput" type="text" maxlength="50" class="w-full border rounded p-2 mb-3" placeholder="Enter status" />
-      <div>
-        <h3 class="font-semibold mb-2">History</h3>
-        <ul id="historyList" class="max-h-48 overflow-y-auto space-y-1 text-sm pr-1"></ul>
-      </div>
-      <div class="flex justify-end gap-2 mt-4">
-        <button id="cancelBtn" class="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Cancel</button>
-        <button id="saveBtn" class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">Save</button>
-      </div>
-    </div>
-  </div>  <!-- Firebase + app code -->  <script type="module">
-    // ───────────────── Firebase initialisation ─────────────────
+<body class="bg-gray-50 min-h-screen flex flex-col items-center p-6">
+
+  <h1 class="text-2xl font-bold mb-4">Timestamp Tracker</h1>
+
+  <!-- Input form -->
+  <div class="w-full max-w-md bg-white p-4 rounded shadow">
+    <input 
+      id="updateInput" 
+      type="text" 
+      maxlength="200"
+      placeholder="Enter your update..."
+      class="border w-full rounded p-2 mb-3"
+    />
+    <button 
+      id="saveBtn"
+      class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded"
+    >Save Update</button>
+  </div>
+
+  <!-- Update list -->
+  <div class="w-full max-w-md mt-6">
+    <h2 class="font-semibold mb-2">History</h2>
+    <ul id="updateList" class="space-y-2"></ul>
+  </div>
+
+  <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-    import {
-      getFirestore,
-      doc,
-      onSnapshot,
-      runTransaction,
-      Timestamp
+    import { 
+      getFirestore, doc, getDoc, runTransaction, onSnapshot, Timestamp 
     } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
-    /*
-      1️⃣  Create a Firebase project → https://console.firebase.google.com
-      2️⃣  Enable **Firestore** (test-mode for quick start, or lock it down later)
-      3️⃣  Replace the config object below with **your** project credentials
-      4️⃣  (Optional) Update security rules so anyone can read but only authenticated users can write.
-          For a demo you can temporarily allow read/write:  allow read, write: true;  (NOT for prod!)
-    */
-    
-const firebaseConfig = {
-  apiKey: "AIzaSyAfGzkSg6U49-wXy-mvMd2OdqJ3qHo5Ouk",
-  authDomain: "beta8-434f9.firebaseapp.com",
-  projectId: "beta8-434f9",
-  storageBucket: "beta8-434f9.firebasestorage.app",
-  messagingSenderId: "948269597618",
-  appId: "1:948269597618:web:506b43105b755686a01aab",
-  measurementId: "G-YCF71WWJ97"
-};
+    // Firebase config (yours)
+    const firebaseConfig = {
+      apiKey: "AIzaSyAfGzkSg6U49-wXy-mvMd2OdqJ3qHo5Ouk",
+      authDomain: "beta8-434f9.firebaseapp.com",
+      projectId: "beta8-434f9",
+      storageBucket: "beta8-434f9.firebasestorage.app",
+      messagingSenderId: "948269597618",
+      appId: "1:948269597618:web:506b43105b755686a01aab",
+      measurementId: "G-YCF71WWJ97"
+    };
 
-    const app   = initializeApp(firebaseConfig);
-    const db    = getFirestore(app);
+    const app = initializeApp(firebaseConfig);
+    const db  = getFirestore(app);
 
-    // ───────────────── Config ─────────────────
-    const ROWS = 7; // Modules
-    const COLS = 6; // Areas per module
+    // DOM
+    const inputEl = document.getElementById("updateInput");
+    const saveBtn = document.getElementById("saveBtn");
+    const listEl  = document.getElementById("updateList");
 
-    // ───────────────── DOM refs ─────────────────
-    const grid        = document.getElementById("grid");
-    const modal       = document.getElementById("modal");
-    const modalTitle  = document.getElementById("modalTitle");
-    const statusInput = document.getElementById("statusInput");
-    const historyList = document.getElementById("historyList");
-    const cancelBtn   = document.getElementById("cancelBtn");
-    const saveBtn     = document.getElementById("saveBtn");
+    const docRef = doc(db, "timestampTracker", "main");
 
-    // Keep track of which cell is open in the modal
-    let currentArea = null; // { row, col }
+    // Format helper
+    const fmt = ts => ts?.toDate?.().toLocaleString() ?? "";
 
-    // ───────────────── Helpers ─────────────────
-    const areaId = (r, c) => `${r}_${c}`; // Firestore doc id
-    const fmt    = ts => ts ? (ts.toDate ? ts.toDate().toLocaleString() : new Date(ts).toLocaleString()) : "";
-
-    // Build static grid skeleton & attach listeners
-    function buildGrid() {
-      for (let row = 0; row < ROWS; row++) {
-        // Row label (Module #)
-        const label = document.createElement("div");
-        label.className = "flex items-center justify-center font-semibold bg-gray-200 rounded border border-gray-400";
-        label.style.width  = "110px";
-        label.style.height = "100px";
-        label.textContent  = `Module ${row + 1}`;
-        grid.appendChild(label);
-
-        for (let col = 0; col < COLS; col++) {
-          const cell = document.createElement("div");
-          cell.id           = `cell-${row}-${col}`;
-          cell.dataset.row  = row;
-          cell.dataset.col  = col;
-          cell.className    = "relative flex flex-col justify-center items-center rounded border border-gray-400 bg-blue-100 cursor-pointer shadow transition hover:brightness-90";
-          cell.style.width  = "160px";
-          cell.style.height = "100px";
-          cell.innerHTML    = `
-              <span class="status font-medium">—</span>
-              <span class="time text-xs text-gray-600 absolute bottom-1"></span>`;
-
-          // Open modal on click
-          cell.addEventListener("click", () => openModal(row, col));
-          grid.appendChild(cell);
-
-          // Live subscribe to Firestore changes for this cell
-          subscribeArea(row, col, cell);
-        }
-      }
-    }
-
-    // Subscribe for realtime updates & paint cell
-    function subscribeArea(row, col, cell) {
-      const ref = doc(db, "areas", areaId(row, col));
-      onSnapshot(ref, snap => {
-        const data    = snap.data();
-        const statusEl= cell.querySelector(".status");
-        const timeEl  = cell.querySelector(".time");
-
-        if (data && data.status) {
-          statusEl.textContent = data.status;
-          timeEl.textContent   = fmt(data.updatedAt);
-          cell.classList.remove("bg-blue-100");
-          cell.classList.add("bg-green-200");
-        } else {
-          statusEl.textContent = "Click to update";
-          timeEl.textContent   = "";
-          cell.classList.remove("bg-green-200");
-          cell.classList.add("bg-blue-100");
-        }
+    // Render updates
+    function renderList(history) {
+      listEl.innerHTML = "";
+      history.forEach(entry => {
+        const li = document.createElement("li");
+        li.className = "p-3 bg-white rounded shadow flex justify-between items-center";
+        li.innerHTML = `
+          <span>${entry.text || "(empty)"}</span>
+          <span class="text-xs text-gray-500">${fmt(entry.updatedAt)}</span>
+        `;
+        listEl.appendChild(li);
       });
     }
 
-    // ───────────────── Modal logic ─────────────────
-    function openModal(row, col) {
-      currentArea = { row, col };
-      modalTitle.textContent = `Update Module ${row + 1} – Area ${col + 1}`;
-      historyList.innerHTML = "";
-      modal.classList.remove("hidden");
-      statusInput.focus();
-
-      // Load current doc + history (live)
-      const ref = doc(db, "areas", areaId(row, col));
-      onSnapshot(ref, snap => {
-        if (!currentArea || currentArea.row !== row || currentArea.col !== col) return; // modal switched
-        const data = snap.data();
-
-        statusInput.value = data?.status ?? "";
-        // Render history (latest first)
-        historyList.innerHTML = "";
-        (data?.history ?? []).slice().reverse().forEach(entry => {
-          const li = document.createElement("li");
-          li.textContent = `${fmt(entry.updatedAt)} → ${entry.status || "(cleared)"}`;
-          historyList.appendChild(li);
-        });
-      });
-    }
-
-    function closeModal() {
-      modal.classList.add("hidden");
-      currentArea = null;
-      statusInput.value = "";
-      historyList.innerHTML = "";
-    }
-
-    async function saveStatus() {
-      if (!currentArea) return;
-      const newStatus = statusInput.value.trim();
-      const ref = doc(db, "areas", areaId(currentArea.row, currentArea.col));
-
-      try {
-        await runTransaction(db, async transaction => {
-          const snap    = await transaction.get(ref);
-          const data    = snap.exists() ? snap.data() : {};
-          const history = Array.isArray(data.history) ? data.history : [];
-
-          // 👇 Use a *real* Timestamp value inside the array (NOT FieldValue.serverTimestamp())
-          const nowTs = Timestamp.now();
-          history.push({ status: newStatus, updatedAt: nowTs });
-          if (history.length > 50) history.shift(); // keep last 50 entries
-
-          transaction.set(ref, {
-            status: newStatus,
-            updatedAt: nowTs,   // ok to store server time here as real Timestamp
-            history
-          }, { merge: true });
-        });
-
-        closeModal();
-      } catch (err) {
-        alert(`Failed to save – ${err.message}`);
-        console.error(err);
-      }
-    }
-
-    // ───────────────── Event listeners ─────────────────
-    cancelBtn.addEventListener("click", closeModal);
-    saveBtn.addEventListener("click", saveStatus);
-    statusInput.addEventListener("keydown", e => {
-      if (e.key === "Enter") saveStatus();
+    // Live listener
+    onSnapshot(docRef, snap => {
+      const data = snap.data();
+      const history = data?.history ?? [];
+      renderList(history);
     });
 
-    // ───────────────── Kick-off ─────────────────
-    buildGrid();
-  </script></body>
+    // Save new update
+    async function saveUpdate() {
+      const text = inputEl.value.trim();
+      if (!text) return;
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(docRef);
+        const data = snap.exists() ? snap.data() : {};
+        const history = Array.isArray(data.history) ? data.history : [];
+
+        const nowTs = Timestamp.now();
+        // Insert new at top
+        history.unshift({ text, updatedAt: nowTs });
+
+        tx.set(docRef, { history }, { merge: true });
+      });
+      inputEl.value = "";
+    }
+
+    saveBtn.addEventListener("click", saveUpdate);
+    inputEl.addEventListener("keydown", e => {
+      if (e.key === "Enter") saveUpdate();
+    });
+
+  </script>
+</body>
 </html>
