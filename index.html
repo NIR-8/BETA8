@@ -5,30 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Private Timestamp Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2563eb">
 </head>
-<body class="bg-gray-50 min-h-screen flex flex-col items-center p-6">
+<body class="bg-gray-50 min-h-screen flex flex-col items-center p-4">
 
-  <h1 class="text-2xl font-bold mb-4">Private Timestamp Tracker</h1>
+  <h1 class="text-lg font-bold mb-3">Timestamp Tracker</h1>
 
-  <!-- Input form -->
-  <div class="w-full max-w-md bg-white p-4 rounded shadow hidden" id="updateSection">
+  <!-- Update input -->
+  <div class="w-full max-w-sm bg-white p-3 rounded shadow hidden" id="updateSection">
     <input 
       id="updateInput" 
       type="text" 
       maxlength="200"
-      placeholder="Enter your update..."
-      class="border w-full rounded p-2 mb-3"
+      placeholder="Update..."
+      class="border w-full rounded p-2 mb-2 text-sm"
     />
     <button 
       id="saveBtn"
-      class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded"
-    >Save Update</button>
+      class="w-full bg-blue-600 hover:bg-blue-700 text-white py-1 rounded text-sm"
+    >Save</button>
   </div>
 
-  <!-- Update list -->
-  <div class="w-full max-w-md mt-6 hidden" id="historySection">
-    <h2 class="font-semibold mb-2">History</h2>
-    <ul id="updateList" class="space-y-2"></ul>
+  <!-- History list -->
+  <div class="w-full max-w-sm mt-3 overflow-y-auto hidden" id="historySection" style="max-height:60vh">
+    <ul id="updateList" class="space-y-1 text-sm"></ul>
   </div>
 
   <script type="module">
@@ -37,7 +38,7 @@
       getFirestore, doc, getDoc, setDoc, runTransaction, onSnapshot, Timestamp
     } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
-    // Firebase config (yours)
+    // Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyAfGzkSg6U49-wXy-mvMd2OdqJ3qHo5Ouk",
       authDomain: "beta8-434f9.firebaseapp.com",
@@ -65,18 +66,18 @@
     // Format helper
     const fmt = ts => ts?.toDate?.().toLocaleString() ?? "";
 
-    // Render updates (latest first)
+    // Render updates
     function renderList(history) {
       listEl.innerHTML = "";
       history.forEach(entry => {
         const li = document.createElement("li");
-        li.className = "p-3 bg-white rounded shadow flex justify-between items-center";
+        li.className = "p-2 bg-white rounded shadow flex justify-between items-center";
         li.innerHTML = `
           <div>
             <span class="block font-medium">${entry.text || "(empty)"}</span>
-            <span class="text-xs text-gray-500">By: ${entry.userId || "unknown"}</span>
+            <span class="text-[10px] text-gray-500">By: ${entry.userId || "unknown"}</span>
           </div>
-          <span class="text-xs text-gray-500">${fmt(entry.updatedAt)}</span>
+          <span class="text-[10px] text-gray-500">${fmt(entry.updatedAt)}</span>
         `;
         listEl.appendChild(li);
       });
@@ -100,7 +101,7 @@
         }
       }
 
-      // Ask for userId (once per browser, per passcode)
+      // Ask for userId
       const storedUserId = localStorage.getItem("timestamp_userId_" + channelPasscode);
       if (storedUserId) {
         userId = storedUserId;
@@ -114,7 +115,7 @@
       updateSection.classList.remove("hidden");
       historySection.classList.remove("hidden");
 
-      // Live listener for updates
+      // Listen for changes
       onSnapshot(docRef, snap => {
         const data = snap.data();
         const history = data?.history ?? [];
@@ -122,7 +123,7 @@
       });
     }
 
-    // Save new update (linked list style)
+    // Save new update
     async function saveUpdate() {
       const text = inputEl.value.trim();
       if (!text) return;
@@ -151,5 +152,14 @@
 
     initApp();
   </script>
+
+  <!-- PWA Service Worker Registration -->
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./service-worker.js")
+        .then(() => console.log("Service Worker registered"));
+    }
+  </script>
+
 </body>
 </html>
