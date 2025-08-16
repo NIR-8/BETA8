@@ -1,0 +1,1478 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light only">
+    <title>NIR8 Calculators</title>
+
+    <!-- MathJax configuration -->
+    <script>
+        MathJax = {
+            loader: { load: ['input/tex', 'output/chtml'] },
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                packages: {'[+]': ['base', 'ams']},
+                processEscapes: true
+            },
+            chtml: { scale: 0.9, mtextInheritFont: true },
+            startup: {
+                typeset: false,
+                pageReady() {
+                    MathJax.startup.defaultPageReady();
+                    document.dispatchEvent(new Event('MathJaxReady'));
+                }
+            }
+        };
+    </script>
+
+    <!-- Load local Decimal.js with fallback -->
+    <script src="decimal.min.js" onerror="loadDecimalFallback()"></script>
+    <script>
+        function loadDecimalFallback() {
+            console.warn('Local Decimal.js failed to load. Attempting CDN...');
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/decimal.js/10.4.3/decimal.min.js';
+            script.async = true;
+            script.onerror = () => alert('Failed to load Decimal.js. Calculations may fail.');
+            script.onload = () => initializeDecimal();
+            document.head.appendChild(script);
+        }
+
+        function initializeDecimal() {
+            if (typeof Decimal !== 'undefined') {
+                Decimal.set({ precision: 20, toExpNeg: -9, toExpPos: 20 });
+            }
+        }
+
+        initializeDecimal();
+    </script>
+
+    <!-- Load local MathJax with fallback -->
+    <script src="assets/mathjax/es5/tex-mml-chtml.js" onerror="loadMathJaxFallback()" async></script>
+    <script>
+        function loadMathJaxFallback(attempt = 1, maxAttempts = 2) {
+            console.warn(`Local MathJax failed (Attempt ${attempt}/${maxAttempts})...`);
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
+            script.async = true;
+            script.onerror = () => {
+                if (attempt < maxAttempts) loadMathJaxFallback(attempt + 1, maxAttempts);
+                else {
+                    alert('Failed to load MathJax. Equations as plain text.');
+                    document.getElementById('mathjax-loading').textContent = 'Failed to load equations.';
+                    document.getElementById('mathjax-loading').style.display = 'block';
+                    document.dispatchEvent(new Event('MathJaxReady'));
+                }
+            };
+            script.onload = () => {
+                document.getElementById('mathjax-loading').style.display = 'none';
+                MathJax.startup.getComponents();
+            };
+            document.head.appendChild(script);
+        }
+    </script>
+
+    <style>
+        .CtxtMenu_Info {
+            border-radius: 15px;
+            box-shadow: 0 10px 20px #808080;
+        }
+
+        .menu-bar {
+            background: rgba(0, 0, 0, .8);
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 100;
+            padding: 10px 0;
+        }
+        .menu-container {
+            display: flex;
+            max-width: 1000px;
+            width: 100%;
+            padding: 0 20px;
+            align-items: center;
+            gap: 20px;
+        }
+        .menu-item {
+            color: #fff;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            transition: background .3s;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .menu-item:hover { background: rgba(255, 255, 255, .2); }
+        .menu-item.active { background: #28a745; }
+        .menu-qty-tracker {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-left: auto;
+        }
+        .menu-qty-tracker.hidden { display: none; }
+        .menu-qty-group {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .menu-qty-input, .lot-select {
+            width: 100px;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            text-align: center;
+            background: #fff;
+            color: #000;
+            font-size: 14px;
+        }
+        .menu-qty-input:focus, .lot-select:focus {
+            outline: 0;
+            border-color: #28a745;
+        }
+        .lot-select option { background: #fff; color: #000; }
+        .menu-qty-label {
+            font-size: 12px;
+            color: #ccc;
+            margin-bottom: 3px;
+        }
+        .menu-qty-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+        }
+        .menu-qty-warning {
+            color: #ff6b6b;
+            font-size: 11px;
+            margin-top: 3px;
+            display: none;
+        }
+        .menu-qty-warning.active {
+            display: block;
+            background: #ff6b6b;
+            color: #fff;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+        body {
+            font-family: Poppins, sans-serif;
+            background: linear-gradient(to right, #4facfe, #00f2fe);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            flex-direction: column;
+            padding: 20px 20px 80px;
+            text-align: center;
+            margin: 0;
+            position: relative;
+        }
+        .calculator-container {
+            display: none;
+            background: #fff;
+            padding: 25px;
+            width: 90%;
+            max-width: 400px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, .2);
+            margin-bottom: 20px;
+        }
+        #acbCalculator { max-width: 900px; }
+        .calculator-container.active { display: block; }
+        .input-group {
+            margin-top: 10px;
+            text-align: left;
+        }
+        label {
+            font-weight: 600;
+            display: block;
+            color: #444;
+        }
+        input, select {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin: 5px 0;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            text-align: center;
+        }
+        input:focus, select:focus {
+            border-color: #007bff;
+            outline: 0;
+            box-shadow: 0 0 5px rgba(0, 123, 255, .5);
+        }
+        .button-row {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 15px;
+        }
+        button {
+            background: #28a745;
+            color: #fff;
+            padding: 12px;
+            flex: 1;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            user-select: none;
+        }
+        button:hover { background: #218838; }
+        .hidden { display: none !important; }
+        .calculation-steps {
+            margin-top: 20px;
+            padding: 15px;
+            width: 90%;
+            max-width: 900px;
+            background: #fff;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, .1);
+            color: #555;
+            text-align: left;
+        }
+        .calculation-entry {
+            margin-bottom: 15px;
+            border: 1px solid #000;
+            padding: 15px;
+            position: relative;
+            width: 100%;
+            min-height: 200px;
+            font-size: 14pt;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+        .calculation-entry::before {
+            content: "Assay Based Calculation";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background: #f0f0f0;
+            padding: 5mm;
+            text-align: center;
+            font-size: 16pt;
+            font-weight: 600;
+            border-bottom: 1px solid #000;
+            box-sizing: border-box;
+        }
+        .calculation-entry::after {
+            content: "Remarks: ______________________________________________________________";
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: #f0f0f0;
+            padding: 5mm;
+            font-size: 14pt;
+            border-top: 1px solid #000;
+            box-sizing: border-box;
+        }
+        .calculation-entry .lot-label::before {
+            content: "LOT: ";
+            position: absolute;
+            top: 24mm;
+            left: 15mm;
+            font-size: 14pt;
+        }
+        .reference-values {
+            position: absolute;
+            top: 24mm;
+            right: 15mm;
+            font-size: 10pt;
+            color: #000;
+            z-index: 10;
+        }
+        .calculation-content {
+            margin: 30mm 15mm;
+            font-size: 14pt;
+            overflow: hidden;
+        }
+        .delete-button {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            color: red;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .delete-button:hover { color: #c00; }
+        .page-number {
+            position: absolute;
+            bottom: 1mm;
+            right: 4mm;
+            font-size: 8pt;
+            color: #000;
+            font-weight: 700;
+        }
+        .loading-indicator {
+            display: none;
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 12px;
+            color: #666;
+            font-style: italic;
+        }
+        .input-row {
+            display: flex;
+            gap: 10px;
+            justify-content: space-between;
+        }
+        .input-row .input-group { flex: 1; }
+        .progress-container {
+            width: 100%;
+            background: #ddd;
+            border-radius: 5px;
+            margin-top: 15px;
+            height: 10px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            width: 0%;
+            height: 100%;
+            background: #28a745;
+            transition: width .3s;
+        }
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type=number] { -moz-appearance: textfield; }
+        .acb-table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 10px 0;
+            font-family: Poppins, sans-serif;
+        }
+        .acb-td, .acb-th {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+            font-size: 14px;
+            min-width: 60px;
+        }
+        .acb-th {
+            background-color: #f2f2f2;
+            color: #444;
+            font-weight: 600;
+        }
+        .acb-input {
+            width: calc(100% - 16px);
+            padding: 6px;
+            margin: 2px 0;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            text-align: center;
+            background: transparent;
+        }
+        .acb-input:focus {
+            border-color: #00d403;
+            outline: 0;
+            box-shadow: 0 0 5px rgba(0, 123, 255, .5);
+        }
+        .acb-input.edited {
+            border-color: #ffdc00ba;
+            background-color: #fff;
+        }
+        .acb-input[readonly] {
+            background: #f5f5f5;
+            cursor: not-allowed;
+        }
+        .acb-span {
+            display: block;
+            padding: 6px;
+            font-size: 14px;
+        }
+        .acb-prefilled { color: #1a1a1a; }
+        .acb-manual-input, .acb-output { color: #00f; }
+        .acb-highlight-row { background-color: #e6f3ff; }
+        .acb-notice {
+            text-align: center;
+            background-color: #ffeb3b;
+            padding: 8px 16px;
+            border-radius: 5px;
+            font-size: 14px;
+            display: none;
+            margin: 10px auto;
+            width: fit-content;
+        }
+        .acb-toggle-btn {
+            background: #28a745;
+            color: #fff;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .acb-toggle-btn:hover { background: #218838; }
+        .acb-toggle-btn:disabled { background: #ccc; cursor: not-allowed; }
+        .print-btn {
+            background: #007bff;
+            color: #fff;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-bottom: 10px;
+            display: none;
+        }
+        .print-btn:hover { background: #0056b3; }
+        .calculation-steps:not(.hidden) .print-btn { display: block; }
+        .error-message {
+            color: #ff6b6b;
+            font-size: 12px;
+            margin-top: 5px;
+            text-align: center;
+        }
+        .reset-acb-btn {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            color: #ff6b6b;
+            padding: 5px;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.3s;
+        }
+        .reset-acb-btn:hover {
+            background: rgba(255, 107, 107, 0.1);
+            transform: rotate(90deg);
+        }
+        #mathjax-loading {
+            display: none;
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            color: #666;
+            font-size: 14px;
+            font-style: italic;
+            z-index: 1000;
+        }
+        footer {
+            width: 100%;
+            background: rgba(0, 0, 0, .8);
+            color: #fff;
+            text-align: center;
+            padding: 10px 0;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            font-size: 14px;
+            z-index: 5;
+        }
+        #remainingQty {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #remainingQty:hover {
+            color: #4facfe;
+            text-decoration: underline;
+        }
+        @media (max-width: 768px) {
+            .calculation-entry { min-height: 180px; font-size: 12pt; }
+            .calculation-entry::before { font-size: 14pt; padding: 4mm; }
+            .calculation-entry::after { font-size: 12pt; padding: 4mm; bottom: 8mm; }
+            .calculation-entry .lot-label::before, .reference-values { top: 24mm; font-size: 10pt; }
+            .calculation-content { margin: 26mm 10mm; font-size: 12pt; }
+            .page-number { font-size: 10pt; bottom: 2mm; right: 10mm; }
+            .acb-td, .acb-th { font-size: 12px; padding: 6px; min-width: 50px; }
+            .acb-input, .acb-span { font-size: 12px; padding: 4px; }
+            .menu-container { flex-wrap: wrap; gap: 10px; padding: 10px; }
+            .menu-qty-tracker { order: 3; width: 100%; justify-content: center; margin-left: 0; }
+        }
+        @media (max-width: 480px) {
+            .calculation-entry { min-height: 180px; font-size: 10pt; }
+            .calculation-entry::before { font-size: 12pt; padding: 3mm; }
+            .calculation-entry::after { font-size: 10pt; padding: 3mm; bottom: 6mm; }
+            .calculation-entry .lot-label::before { top: 20mm; left: 8mm; font-size: 10pt; }
+            .reference-values { top: 25mm; left: 8mm; right: auto; font-size: 10pt; text-align: left; width: 100%; }
+            .calculation-content { margin: 28mm 8mm 22mm; font-size: 10pt; }
+            .page-number { font-size: 8pt; bottom: 1mm; right: 8mm; }
+            .acb-td, .acb-th { font-size: 10px; padding: 4px; min-width: 40px; }
+            .acb-input, .acb-span { font-size: 10px; padding: 3px; }
+            .calculator-container { width: 100%; padding: 15px; }
+            .acb-input, input { font-size: 14px; }
+            .acb-toggle-btn, button { font-size: 14px; padding: 10px; }
+            .menu-item { padding: 6px 10px; font-size: 14px; }
+            .menu-qty-input, .lot-select { width: 80px; }
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+
+        @media print {
+            @page { size: A4 landscape; margin: 8mm; }
+            body { background: transparent; padding: 0; margin: 0; }
+            #mathjax-loading, .acb-notice, .acb-toggle-btn, .calculator-container, .delete-button, .menu-bar, .print-btn, .progress-container, footer, .reset-acb-btn { display: none !important; }
+            .calculation-steps {
+                border-radius: 0 !important;
+                box-shadow: none !important;
+                display: block !important;
+                width: 100%;
+                max-width: none;
+                margin: 0;
+                padding: 0;
+                background: transparent;
+            }
+            .calculation-entry {
+                width: 280mm !important;
+                height: 190mm !important;
+                margin: 0 auto;
+                padding: 0;
+                border: 1px solid #000;
+                font-size: 12pt;
+                background: #fff;
+                overflow: hidden;
+                page-break-after: always;
+            }
+            .calculation-entry::before {
+                content: "Assay Based Calculation";
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                background: #f0f0f0;
+                padding: 5mm;
+                text-align: center;
+                font-size: 16pt;
+                font-weight: 600;
+                border-bottom: 1px solid #000;
+            }
+            .calculation-entry::after {
+                content: "Remarks: ______________________________________________________________";
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                width: 100%;
+                background: #f0f0f0;
+                padding: 5mm;
+                font-size: 14pt;
+                border-top: 1px solid #000;
+            }
+            .reference-values {
+                top: 20mm;
+                right: 10mm;
+                font-size: 10pt;
+                background: #fff;
+                padding: 2px 5px;
+            }
+            .calculation-entry .lot-label::before {
+                top: 24mm;
+                left: 15mm;
+                font-size: 14pt;
+            }
+            .calculation-content {
+                margin: 30mm 15mm;
+                font-size: 14pt;
+                text-align: left;
+            }
+            .page-number {
+                bottom: 5mm;
+                right: 5mm;
+                font-size: 8pt;
+            }
+            #stepsContainer { display: flex; flex-direction: column-reverse; }
+        }
+    </style>
+</head>
+<body>
+    <div id="mathjax-loading">Loading equations...</div>
+    <noscript>
+        <div style="background:#ff6b6b;color:#fff;padding:10px;text-align:center">
+            JavaScript is required. Please enable JavaScript.
+        </div>
+    </noscript>
+    <div class="menu-bar">
+        <div class="menu-container">
+            <div class="menu-item active" id="menuFormula" onclick='showCalculator("formula")'>Formula Calculator</div>
+            <div class="menu-item" id="menuAcb" onclick='showCalculator("acb")'>(A+C)-B Calculator</div>
+            <div class="menu-qty-tracker">
+                <div class="menu-qty-group">
+                    <label for="stdQty" class="menu-qty-label">Std Qty (kg)</label>
+                    <input type="number" id="stdQty" class="menu-qty-input" step="0.001" min="0" placeholder="Enter std qty" onchange="updateQuantityTracker()">
+                </div>
+                <div class="menu-qty-group">
+                    <label class="menu-qty-label">Dispensed</label>
+                    <div id="dispensedQty" class="menu-qty-value">0.000</div>
+                </div>
+                <div class="menu-qty-group">
+                    <label for="remainingQty" class="menu-qty-label">Remaining</label>
+                    <div id="remainingQty" class="menu-qty-value">0.000</div>
+                    <div id="quantityWarning" class="menu-qty-warning">Qty mismatch!</div>
+                </div>
+                <div class="menu-qty-group" id="lotSelectGroup" style="display: none;">
+                    <label for="lotSelect" class="menu-qty-label">Select Lot</label>
+                    <select id="lotSelect" class="menu-qty-input">
+                        <option value="" disabled selected>Select Lot</option>
+                        <option value="1">I</option>
+                        <option value="2">II</option>
+                        <option value="3">III</option>
+                        <option value="4">IV</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="formulaCalculator" class="calculator-container active">
+        <h2>Formula Calculator</h2>
+        <div class="input-group">
+            <label for="Q">Quantity (Q):</label>
+            <input type="number" id="Q" max="9999999" min="0.001" required placeholder="Enter quantity" oninput="handleInput(event)">
+        </div>
+        <div class="input-row">
+            <div class="input-group">
+                <label for="water">Water Content (W):</label>
+                <input type="number" id="water" step="0.01" min="0.01" max="99.99" required placeholder="Enter water content" oninput="handleInput(event)">
+            </div>
+            <div class="input-group">
+                <label for="assay">Assay Content (A):</label>
+                <input type="number" id="assay" step="0.01" min="0.01" max="100.00" required placeholder="Enter assay content" oninput="handleInput(event)">
+            </div>
+        </div>
+        <div class="progress-container">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="button-row">
+            <button type="button" onclick='calculate("F1")' aria-label="Calculate F1">Calculate F1</button>
+            <button type="button" onclick='calculate("F2")' aria-label="Calculate F2">Calculate F2</button>
+            <button type="button" onclick='calculate("F3")' aria-label="Calculate F3">Calculate F3</button>
+        </div>
+    </div>
+    <div id="acbCalculator" class="calculator-container">
+        <div class="header-row">
+            <h2>(A+C)-B Calculator</h2>
+            <button type="button" class="acb-toggle-btn" id="toggleEditBtn" onclick="toggleEdit()" aria-label="Toggle edit standard quantities">Enable Editing Std qty</button>
+        </div>
+        <table class="acb-table">
+            <caption class="hidden">(A+C)-B Calculator Table</caption>
+            <thead>
+                <tr>
+                    <th class="acb-th" scope="col"></th>
+                    <th class="acb-th" scope="col">Lot-I</th>
+                    <th class="acb-th" scope="col">Lot-II</th>
+                    <th class="acb-th" scope="col">Lot-III</th>
+                    <th class="acb-th" scope="col">Lot-IV</th>
+                    <th class="acb-th" scope="col">TOTAL (kg)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="acb-td">Std. Qty (A)<br>kg</td>
+                    <td class="acb-td"><input type="number" step="0.001" id="lot1-a" value="417.000" class="acb-input acb-prefilled" readonly placeholder="Std Qty A"></td>
+                    <td class="acb-td"><input type="number" step="0.001" id="lot2-a" value="417.000" class="acb-input acb-prefilled" readonly placeholder="Std Qty A"></td>
+                    <td class="acb-td"><input type="number" step="0.001" id="lot3-a" value="417.000" class="acb-input acb-prefilled" readonly placeholder="Std Qty A"></td>
+                    <td class="acb-td"><input type="number" step="0.001" id="lot4-a" value="417.000" class="acb-input acb-prefilled" readonly placeholder="Std Qty A"></td>
+                    <td class="acb-td"><span id="total-a" class="acb-span acb-prefilled">1668.000</span></td>
+                </tr>
+                <tr class="acb-highlight-row">
+                    <td class="acb-td">Issued Qty (B)<br>kg</td>
+                    <td class="acb-td"><input type="number" step="0.001" id="lot1-b" class="acb-input" placeholder="Issued Qty B"></td>
+                    <td class="acb-td"><input type="number" step="0.001" id="lot2-b" class="acb-input" placeholder="Issued Qty B"></td>
+                    <td class="acb-td"><input type="number" step="0.001" id="lot3-b" class="acb-input" placeholder="Issued Qty B"></td>
+                    <td class="acb-td basaloid-type="number" step="0.001" id="lot4-b" class="acb-input" placeholder="Issued Qty B"></td>
+                    <td class="acb-td"><span id pháp luật="total-b" class="acb-span acb-prefilled">0.000</span></td>
+                </tr>
+                <tr>
+                    <td class="acb-td">Std. Qty (C)<br>kg</td>
+                    <td class="acb-td"><input type="number" step="0.001" id="lot1-c" value="84.375" class="acb-input acb-prefilled" readonly placeholder="Std Qty C"></td>
+                    <td class="acb-td"><input type="number" step="0.001" id="lot2-c" value="84.375" class="acb-input acb-prefilled" readonly placeholder="Std Qty C"></td>
+                    <td class="acb-td"><input type="number" step="0.001" id="lot3-c" value="84.375" class="acb-input acb-prefilled" readonly placeholder="Std Qty C"></td>
+                    <td class="acb-td"><input type="number" step="0.001" id="lot4-c" value="84.375" class="acb-input acb-prefilled" readonly placeholder="Std Qty C"></td>
+                    <td class="acb-td"><span id="total-c" class="acb-span acb-prefilled">337.500</span></td>
+                </tr>
+                <tr class="acb-highlight-row">
+                    <td class="acb-td">(A+C)-(B)<br>kg</td>
+                    <td class="acb-td"><span id="lot1-result">-</span></td>
+                    <td class="acb-td"><span id="lot2-result">-</span></td>
+                    <td class="acb-td"><span id="lot3-result">-</span></td>
+                    <td class="acb-td"><span id="lot4-result">-</span></td>
+                    <td class="acb-td"><span id="total-result" class="acb-span acb-prefilled">0.000</span></td>
+                </tr>
+            </tbody>
+        </table>
+        <div id="acb-notice" class="acb-notice">Editing standard values.</div>
+        <button type="button" class="reset-acb-btn" onclick="resetACBCalculator()" title="Reset (A+C)-B Calculator" aria-label="Reset (A+C)-B Calculator">↻</button>
+    </div>
+    <div class="calculation-steps hidden" id="calculationSteps" role="region" aria-label="Calculation steps">
+        <button type="button" onclick="printWithCheck()" class="print-btn" aria-label="Print calculations">Print Calculations</button>
+        <div id="stepsContainer"></div>
+    </div>
+    <footer>
+        Results are reliable but always double-check.
+    </footer>
+    <script>
+        const CONSTANTS = {
+            MAX_CALCULATIONS: 15,
+            ACB_DEFAULT_A: 417.000,
+            ACB_DEFAULT_C: 84.375,
+            ACB_TOTAL_A: 1668.000,
+            ACB_TOTAL_C: 337.500,
+            Q_MAX: 9999999,
+            W_MAX: 99.99,
+            A_MAX: 100.00,
+            MATHJAX_TIMEOUT: 10000
+        };
+
+        Decimal.set({ precision: 20, toExpNeg: -9, toExpPos: 20 });
+
+        const domCache = {
+            QInput: document.getElementById("Q"),
+            waterInput: document.getElementById("water"),
+            assayInput: document.getElementById("assay"),
+            waterGroup: document.querySelector("#water").parentElement,
+            assayGroup: document.querySelector("#assay").parentElement,
+            buttons: document.querySelector(".button-row"),
+            progressBar: document.getElementById("progressBar"),
+            calculationSteps: document.getElementById("calculationSteps"),
+            stepsContainer: document.getElementById("stepsContainer"),
+            formulaCalculator: document.getElementById("formulaCalculator"),
+            acbCalculator: document.getElementById("acbCalculator"),
+            menuFormula: document.getElementById("menuFormula"),
+            menuAcb: document.getElementById("menuAcb"),
+            toggleEditBtn: document.getElementById("toggleEditBtn"),
+            acbNotice: document.getElementById("acb-notice"),
+            mathJaxLoading: document.getElementById("mathjax-loading"),
+            stdQtyInput: document.getElementById("stdQty"),
+            dispensedQty: document.getElementById("dispensedQty"),
+            remainingQty: document.getElementById("remainingQty"),
+            quantityWarning: document.getElementById("quantityWarning"),
+            lotSelect: document.getElementById("lotSelect"),
+            lotSelectGroup: document.getElementById("lotSelectGroup"),
+            acbInputs: {
+                a: ['lot1-a', 'lot2-a', 'lot3-a', 'lot4-a'].map(id => document.getElementById(id)),
+                b: ['lot1-b', 'lot2-b', 'lot3-b', 'lot4-b'].map(id => document.getElementById(id)),
+                c: ['lot1-c', 'lot2-c', 'lot3-c', 'lot4-c'].map(id => document.getElementById(id)),
+                results: ['lot1-result', 'lot2-result', 'lot3-result', 'lot4-result'].map(id => document.getElementById(id)),
+                totals: {
+                    a: document.getElementById("total-a"),
+                    b: document.getElementById("total-b"),
+                    c: document.getElementById("total-c"),
+                    result: document.getElementById("total-result")
+                }
+            }
+        };
+
+        let calculationCount = 0;
+        let isMathJaxReady = false;
+        let hasCalculated = false;
+        let isACBEditingEnabled = false;
+        let acbNoticeTimeout;
+        let calculations = [];
+        let mathJaxQueue = [];
+        let mathJaxPending = false;
+
+        document.addEventListener('MathJaxReady', () => {
+            isMathJaxReady = true;
+            domCache.mathJaxLoading.style.display = 'none';
+            MathJax.typesetPromise().catch(err => console.error("MathJax error:", err));
+        });
+
+        function retryMathJaxLoad(attempt = 1, maxAttempts = 2) {
+            if (attempt > maxAttempts) {
+                alert("Failed to render equations. Displaying plain text.");
+                isMathJaxReady = true;
+                domCache.mathJaxLoading.style.display = 'none';
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
+            script.async = true;
+            script.onload = () => {
+                MathJax.startup.getComponents();
+                isMathJaxReady = true;
+                domCache.mathJaxLoading.style.display = 'none';
+            };
+            script.onerror = () => retryMathJaxLoad(attempt + 1, maxAttempts);
+            document.head.appendChild(script);
+        }
+
+        function truncateTo12Digits(num) {
+            try {
+                const numStr = new Decimal(num).toString();
+                const isNegative = numStr.startsWith("-");
+                const absNumStr = isNegative ? numStr.slice(1) : numStr;
+                let result = isNegative ? "-" : "";
+                let digitCount = 0;
+                for (let i = 0; i < absNumStr.length && digitCount < 12; i++) {
+                    if (absNumStr[i] === ".") result += ".";
+                    else {
+                        result += absNumStr[i];
+                        digitCount++;
+                    }
+                }
+                return result;
+            } catch {
+                return num.toString();
+            }
+        }
+
+        const formatNumber = (() => {
+            const cache = new Map();
+            const maxCacheSize = 500;
+            return (num, isAW = false) => {
+                const cacheKey = `${num}_${isAW}`;
+                if (cache.has(cacheKey)) return cache.get(cacheKey);
+                try {
+                    const d = new Decimal(num);
+                    const formatted = isAW ? d.toFixed(2) : d.toString();
+                    const result = truncateTo12Digits(formatted);
+                    if (cache.size >= maxCacheSize) cache.clear();
+                    cache.set(cacheKey, result);
+                    return result;
+                } catch {
+                    return num.toString();
+                }
+            };
+        })();
+
+        function queueMathJax(element) {
+            mathJaxQueue.push(element);
+            if (!mathJaxскriptPending) {
+                mathJaxPending = true;
+                requestAnimationFrame(() => {
+                    MathJax.typesetPromise(mathJaxQueue).then(() => {
+                        mathJaxPending = false;
+                        mathJaxQueue = [];
+                    }).catch(err => {
+                        console.error("MathJax error:", err);
+                        mathJaxPending = false;
+                        mathJaxQueue = [];
+                        retryMathJaxLoad();
+                    });
+                });
+            }
+        }
+
+        function createCalculation(formulaType, Q, W, A) {
+            try {
+                const hundred = new Decimal(100);
+                const formattedQ = formatNumber(Q);
+                const formattedA = formatNumber(A, true);
+                const formattedW = formatNumber(W, true);
+
+                if (formulaType === "F1" || formulaType === "F3") {
+                    const step1 = Q.mul(hundred);
+                    const step2 = step1.mul(hundred);
+                    const step3 = hundred.sub(W);
+                    const step4 = A.mul(step3);
+                    const numerator = step2;
+                    const denominator = step4;
+                    if (denominator.isZero()) throw new Error("Division by zero");
+                    const result = numerator.div(denominator);
+                    const roundedResult = result.toFixed(3);
+
+                    return {
+                        mathJax: `
+                            $$ F_${formulaType === "F1" ? "1" : "3"} = \\frac{${formattedQ} \\times 100 \\times 100}{${formattedA} \\times (100 - ${formattedW})} $$ <br><br>
+                            $$ = \\frac{${formatNumber(numerator)}}{${formatNumber(denominator)}} $$ <br><br>
+                            $$ = ${truncateTo12Digits(roundedResult)} \\text{ (original: } ${formatNumber(result)} \\text{)} $$
+                        `,
+                        plainText: `
+                            F${formulaType === "F1" ? "1" : "3"} = (${formattedQ} × 100 × 100) / (${formattedA} × ${formatNumber(step3)})
+                            <br><br>
+                            = ${formatNumber(numerator)} / ${formatNumber(denominator)}
+                            <br><br>
+                            = ${truncateTo12Digits(roundedResult)} <br> (original: ${formatNumber(result)})
+                        `,
+                        formulaType,
+                        Q: Q.toString(),
+                        W: W.toString(),
+                        A: A.toString(),
+                        result: roundedResult,
+                        isFinal: true
+                    };
+                } else if (formulaType === "F2") {
+                    const step1 = hundred.sub(W);
+                    const step2 = A.mul(step1);
+                    const step3 = Q.mul(step2);
+                    const denominator = hundred.mul(hundred);
+                    const numerator = step3;
+                    const result = numerator.div(denominator);
+                    const roundedResult = result.toFixed(3);
+
+                    return {
+                        mathJax: `
+                            $$ F_2 = \\frac{${formattedQ} \\times ${formattedA} \\times (100 - ${formattedW})}{100 \\times 100} $$ <br><br>
+                            $$ = \\frac{${formatNumber(numerator)}}{${formatNumber(denominator)}} $$ <br><br>
+                            $$ = ${truncateTo12Digits(roundedResult)} \\text{ (original: } ${formatNumber(result)} \\text{)} $$
+                        `,
+                        plainText: `
+                            F2 = (${formattedQ} × ${formattedA} × ${formatNumber(step1)}) / ${formatNumber(denominator)}
+                            <br><br>
+                            = ${formatNumber(numerator)} / ${formatNumber(denominator)}
+                            <br><br>
+                            = ${ truncateTo12Digits(roundedResult)} <br> (original: ${formatNumber(result)})
+                        `,
+                        formulaType,
+                        Q: Q.toString(),
+                        W: W.toString(),
+                        A: A.toString(),
+                        result: roundedResult,
+                        isFinal: false
+                    };
+                }
+                return null;
+            } catch (err) {
+                console.error("Calculation error:", err);
+                throw err;
+            }
+        }
+
+        function updateQuantityTracker() {
+            const stdQty = new Decimal(domCache.stdQtyInput.value || 0);
+            let dispensed = new Decimal(0);
+            let remainingCalc = new Decimal(0);
+            let hasFinalCalculations = false;
+
+            calculations.forEach(calc => {
+                if (calc.formulaType === "F2") {
+                    dispensed = dispensed.plus(calc.Q);
+                    remainingCalc = remainingCalc.plus(calc.result);
+                } else if (calc.formulaType === "F1" || calc.formulaType === "F3") {
+                    dispensed = dispensed.plus(calc.result);
+                    remainingCalc = remainingCalc.plus(calc.Q);
+                    hasFinalCalculations = true;
+                }
+            });
+
+            domCache.dispensedQty.textContent = formatNumber(dispensed);
+            domCache.QInput.disabled = stdQty.isZero();
+
+            if (stdQty.isZero()) {
+                domCache.remainingQty.textContent = '-';
+                domCache.quantityWarning.classList.remove('active');
+                domCache.lotSelectGroup.style.display = 'none';
+            } else {
+                const remaining = stdQty.minus(remainingCalc);
+                domCache.remainingQty.textContent = formatNumber(remaining);
+                domCache.lotSelectGroup.style.display = remaining.eq(0) ? 'block' : 'none';
+                domCache.quantityWarning.classList.toggle('active', hasFinalCalculations && !remaining.eq(0) || remaining.lt(0));
+            }
+        }
+
+        function updateLotDispensedQty() {
+            const lotIndex = parseInt(domCache.lotSelect.value) - 1;
+            if (lotIndex >= 0 && lotIndex < domCache.acbInputs.b.length) {
+                const dispensedQty = domCache.dispensedQty.textContent;
+                const input = domCache.acbInputs.b[lotIndex];
+                input.value = dispensedQty;
+                input.classList.add('acb-manual-input');
+                updateACB(input, lotIndex, 'b');
+                showCalculator('acb');
+                input.focus();
+                domCache.lotSelect.value = '';
+                domCache.lotSelectGroup.style.display = 'none';
+            }
+        }
+
+        function copyRemainingToQ() {
+            const remaining = domCache.remainingQty.textContent;
+            if (remaining !== '-' && remaining !== '0.000') {
+                if (confirm(`Copy ${remaining} to Quantity (Q) field?`)) {
+                    domCache.QInput.value = remaining;
+                    domCache.waterInput.value = '';
+                    domCache.assayInput.value = '';
+                    domCache.progressBar.style.width = "33%";
+                    domCache.waterGroup.style.display = "block";
+                    domCache.assayGroup.style.display = "none";
+                    domCache.buttons.style.display = "none";
+                    domCache.waterInput.focus();
+                }
+            }
+        }
+
+        function resetACBCalculator() {
+            if (!confirm("Reset (A+C)-B calculator? This will clear all entered values.")) return;
+            domCache.acbInputs.a.forEach(input => {
+                input.value = CONSTANTS.ACB_DEFAULT_A.toFixed(3);
+                input.classList.remove('edited', 'acb-manual-input');
+                input.classList.add('acb-prefilled');
+            });
+            domCache.acbInputs.c.forEach(input => {
+                input.value = CONSTANTS.ACB_DEFAULT_C.toFixed(3);
+                input.classList.remove('edited', 'acb-manual-input');
+                input.classList.add('acb-prefilled');
+            });
+            domCache.acbInputs.b.forEach(input => {
+                input.value = '';
+                input.classList.remove('acb-manual-input');
+            });
+            domCache.acbInputs.totals.a.textContent = CONSTANT.ACB_TOTAL_A.toFixed(3);
+            domCache.acbInputs.totals.b.textContent = '0.000';
+            domCache.acbInputs.totals.c.textContent = CONSTANTS.ACB_TOTAL_C.toFixed(3);
+            domCache.acbInputs.totals.result.textContent = '0.000';
+            domCache.acbInputs.results.forEach(result => {
+                result.textContent = '-';
+                result.classList.remove('acb-output', 'acb-prefilled');
+            });
+            if (isACBEditingEnabled) toggleEdit();
+        }
+
+        function calculate(formulaType) {
+            if (calculationCount >= CONSTANTS.MAX_CALCULATIONS) {
+                alert(`Maximum ${CONSTANTS.MAX_CALCULATIONS} calculations reached. Reset or delete a calculation.`);
+                return;
+            }
+
+            if (!domCache.stdQtyInput.value.trim()) {
+                alert("Please enter Std Qty (kg) before calculating.");
+                domCache.stdQtyInput.focus();
+                return;
+            }
+
+            let Q, W, A;
+            try {
+                Q = new Decimal(domCache.QInput.value || 0);
+                W = new Decimal(domCache.waterInput.value || 0);
+                A = new Decimal(domCache.assayInput.value || 0);
+            } catch {
+                alert("Invalid input values.");
+                domCache.QInput.focus();
+                return;
+            }
+
+            if (Q.isNaN() || W.isNaN() || A.isNaN() || Q.lte(0) || W.lte(0) || A.lte(0)) {
+                alert("All inputs (Q, W, A) must be greater than 0.");
+                domCache.QInput.focus();
+                return;
+            }
+
+            if (Q.gt(CONSTANTS.Q_MAX)) {
+                alert(`Quantity (Q) must be ≤ ${CONSTANTS.Q_MAX}.`);
+                return;
+            }
+
+            if (A.gt(CONSTANTS.A_MAX) || W.gt(CONSTANTS.W_MAX)) {
+                alert("Invalid values: Ensure A ≤ 100 and W ≤ 99.99.");
+                return;
+            }
+
+            hasCalculated = true;
+            let calculationResult;
+            try {
+                calculationResult = createCalculation(formulaType, Q, W, A);
+                if (!calculationResult) throw new Error("Calculation failed");
+            } catch {
+                alert("Calculation failed. Check inputs.");
+                return;
+            }
+
+            calculations.push(calculationResult);
+            const newEntry = document.createElement("div");
+            newEntry.className = "calculation-entry";
+            newEntry.setAttribute("tabindex", "0");
+            newEntry.setAttribute("role", "region");
+            newEntry.setAttribute("aria-label", `Calculation ${formulaType}`);
+            newEntry.innerHTML = `
+                <button type="button" class="delete-button" onclick="deleteCalculation(this)" title="Delete" aria-label="Delete calculation">❌</button>
+                <div class="lot-label"></div>
+                <div class="reference-values">W="${formatNumber(W, true)}" A="${formatNumber(A, true)}"</div>
+                <div class="calculation-content">${calculationResult.plainText}</div>
+                <div class="page-number">${calculationCount + 1}/${calculationCount + 1}</div>
+                <span class="loading-indicator">Rendering...</span>
+            `;
+
+            domCache.stepsContainer.insertBefore(newEntry, domCache.stepsContainer.firstChild);
+            calculationCount++;
+            domCache.calculationSteps.classList.remove("hidden");
+
+            updatePageNumbers();
+            updateQuantityTracker();
+
+            if (isMathJaxReady) {
+                setTimeout(() => {
+                    newEntry.innerHTML = `
+                        <button
+
+ type="button" class="delete-button" onclick="deleteCalculation(this)" title="Delete" aria-label="Delete calculation">❌</button>
+                        <div class="lot-label"></div>
+                        <div class="reference-values">W="${formatNumber(W, true)}" A="${formatNumber(A, true)}"</div>
+                        <div class="calculation-content">${calculationResult.mathJax}</div>
+                        <div class="page-number">${calculationCount}/${calculationCount}</div>
+                    `;
+                    queueMathJax(newEntry);
+                }, 50);
+            } else {
+                newEntry.querySelector('.loading-indicator').style.display = 'block';
+                setTimeout(() => {
+                    if (!isMathJaxReady) retryMathJaxLoad();
+                }, CONSTANTS.MATHJAX_TIMEOUT);
+            }
+
+            domCache.QInput.value = "";
+            domCache.waterInput.value = "";
+            domCache.assayInput.value = "";
+            domCache.progressBar.style.width = "0%";
+            domCache.buttons.style.display = "none";
+            domCache.assayGroup.style.display = "none";
+            domCache.waterGroup.style.display = "none";
+            updateQuantityTracker();
+            domCache.QInput.focus();
+            newEntry.focus();
+        }
+
+        function handleInput(event) {
+            const input = event.target;
+            const value = input.value.trim();
+            let numericValue;
+            try {
+                numericValue = parseFloat(value);
+            } catch {
+                showError(input, "Enter a valid number.");
+                return;
+            }
+
+            if (value === "") {
+                clearError(input);
+                updateProgress();
+                return;
+            }
+
+            if (input.id === "water" && numericValue > 10) {
+                showError(input, "Water Content (W) should be ≤ 10.");
+            } else if (input.id === "assay" && numericValue < 80) {
+                showError(input, "Assay Content (A) should be ≥ 80.");
+            } else {
+                clearError(input);
+            }
+
+            if (event.key === "Enter" && value !== "") {
+                event.preventDefault();
+                const nextInput = input.id === "Q" ? domCache.waterInput : input.id === "water" ? domCache.assayInput : null;
+                if (nextInput) {
+                    nextInput.parentElement.style.display = "block";
+                    nextInput.focus();
+                } else {
+                    input.blur();
+                }
+            }
+
+            if (!/^\d*\.?\d{0,2}$/.test(value) && (input.id === "water" || input.id === "assay")) {
+                input.value = value.slice(0, -1);
+                return;
+            }
+
+            updateProgress();
+        }
+
+        function showError(input, message) {
+            clearError(input);
+            const error = document.createElement('div');
+            error.className = 'error-message';
+            error.id = `${input.id}-error`;
+            error.textContent = message;
+            input.parentElement.appendChild(error);
+            input.setAttribute('aria-describedby', error.id);
+            input.setCustomValidity(message);
+        }
+
+        function clearError(input) {
+            const errorElement = input.nextElementSibling?.classList.contains('error-message') ? input.nextElementSibling : null;
+            if (errorElement) errorElement.remove();
+            input.removeAttribute('aria-describedby');
+            input.setCustomValidity("");
+        }
+
+        function updateProgress() {
+            let filledFields = 0;
+            if (domCache.QInput.value.trim()) filledFields++;
+            if (domCache.waterInput.value.trim()) filledFields++;
+            if (domCache.assayInput.value.trim()) filledFields++;
+            domCache.progressBar.style.width = (filledFields / 3) * 100 + "%";
+            domCache.waterGroup.style.display = domCache.QInput.value.trim() ? "block" : "none";
+            domCache.assayGroup.style.display = domCache.waterInput.value.trim() ? "block" : "none";
+            domCache.buttons.style.display = filledFields === 3 ? "flex" : "none";
+        }
+
+        function showCalculator(calculator) {
+            domCache.formulaCalculator.classList.toggle('active', calculator === 'formula');
+            domCache.acbCalculator.classList.toggle('active', calculator === 'acb');
+            domCache.menuFormula.classList.toggle('active', calculator === 'formula');
+            domCache.menuAcb.classList.toggle('active', calculator === 'acb');
+            domCache.menuQtyTracker.classList.toggle('hidden', calculator === 'acb');
+            domCache.calculationSteps.classList.toggle('hidden', calculator !== 'formula' || calculationCount === 0);
+            if (calculator === 'formula') domCache.QInput.focus();
+            else domCache.acbInputs.b[0].focus();
+        }
+
+        function clearAllFields() {
+            if (!confirm("Clear all formula calculator fields and calculations?")) return;
+            domCache.QInput.value = "";
+            domCache.waterInput.value = "";
+            domCache.assayInput.value = "";
+            domCache.stepsContainer.innerHTML = "";
+            domCache.progressBar.style.width = "0%";
+            domCache.buttons.style.display = "none";
+            domCache.calculationSteps.classList.add("hidden");
+            domCache.assayGroup.style.display = "none";
+            domCache.waterGroup.style.display = "none";
+            calculationCount = 0;
+            hasCalculated = false;
+            calculations = [];
+            updateQuantityTracker();
+            domCache.QInput.focus();
+        }
+
+        function deleteCalculation(button) {
+            if (!confirm("Delete this calculation?")) return;
+            const entry = button.parentElement;
+            const entries = Array.from(domCache.stepsContainer.children);
+            const entryIndex = entries.indexOf(entry);
+            const arrayIndex = calculations.length - 1 - entryIndex;
+            if (arrayIndex >= 0 && arrayIndex < calculations.length) {
+                calculations.splice(arrayIndex, 1);
+            }
+            entry.remove();
+            calculationCount--;
+            if (calculationCount === 0) domCache.calculationSteps.classList.add("hidden");
+            updatePageNumbers();
+            updateQuantityTracker();
+            domCache.QInput.focus();
+        }
+
+        function updatePageNumbers() {
+            const entries = domCache.stepsContainer.getElementsByClassName("calculation-entry");
+            const total = entries.length;
+            Array.from(entries).forEach((entry, i) => {
+                const pageNumber = entry.querySelector(".page-number");
+                if (pageNumber) pageNumber.textContent = `${total - i}/${total}`;
+            });
+        }
+
+        function validateInput(input) {
+            const value = input.value;
+            const maxDecimals = input.id === "stdQty" || input.id.includes('-b') ? 3 : 2;
+            if (!/^\d*\.?\d{0,3}$/.test(value) && value !== '') {
+                input.value = value.slice(0, -1);
+            }
+        }
+
+        function toggleEdit() {
+            isACBEditingEnabled = !isACBEditingEnabled;
+            domCache.toggleEditBtn.textContent = isACBEditingEnabled ? 'Disable Edit' : 'Enable Edit';
+            domCache.acbInputs.a.concat(domCache.acbInputs.c).forEach(input => {
+                input.readOnly = !isACBEditingEnabled;
+            });
+            if (isACBEditingEnabled) showACBNotice();
+        }
+
+        function showACBNotice() {
+            domCache.acbNotice.style.display = 'block';
+            clearTimeout(acbNoticeTimeout);
+            acbNoticeTimeout = setTimeout(() => {
+                domCache.acbNotice.style.display = 'none';
+            }, 3000);
+        }
+
+        function updateACB(input, lotIndex, type) {
+            try {
+                const value = new Decimal(input.value || 0);
+                if (type === 'a' || type === 'c') {
+                    const original = new Decimal(type === 'a' ? CONSTANTS.ACB_DEFAULT_A : CONSTANTS.ACB_DEFAULT_C);
+                    input.classList.toggle('edited', !value.eq(original));
+                    input.classList.remove('acb-prefilled');
+                    input.classList.add('acb-manual-input');
+                    if (lotIndex === 0) {
+                        domCache.acbInputs[type].slice(1).forEach((otherInput, i) => {
+                            otherInput.value = formatNumber(value);
+                            otherInput.classList.toggle('edited', !value.eq(original));
+                            otherInput.classList.remove('acb-manual-input');
+                            otherInput.classList.add('acb-prefilled');
+                        });
+                    }
+                } else {
+                    input.classList.add('acb-manual-input');
+                }
+            } catch {
+                input.value = "";
+            }
+
+            let totalA = new Decimal(0), totalB = new Decimal(0), totalC = new Decimal(0), totalResult = new Decimal(0);
+            domCache.acbInputs.a.forEach((aInput, i) => {
+                const a = new Decimal(aInput.value || 0);
+                const b = new Decimal(domCache.acbInputs.b[i].value || 0);
+                const c = new Decimal(domCache.acbInputs.c[i].value || 0);
+                const resultElement = domCache.acbInputs.results[i];
+
+                if (b.isZero() || !domCache.acbInputs.b[i].value.trim()) {
+                    resultElement.textContent = '-';
+                    resultElement.classList.remove('acb-output', 'acb-prefilled');
+                } else {
+                    const result = a.plus(c).minus(b);
+                    resultElement.textContent = formatNumber(result);
+                    resultElement.classList.add('acb-output');
+                    resultElement.classList.remove('acb-prefilled');
+                    totalResult = totalResult.plus(result);
+                }
+
+                totalA = totalA.plus(a);
+                totalB = totalB.plus(b);
+                totalC = totalC.plus(c);
+            });
+
+            domCache.acbInputs.totals.a.textContent = formatNumber(totalA);
+            domCache.acbInputs.totals.b.textContent = formatNumber(totalB);
+            domCache.acbInputs.totals.c.textContent = formatNumber(totalC);
+            domCache.acbInputs.totals.result.textContent = formatNumber(totalResult);
+
+            [domCache.acbInputs.totals.a, domCache.acbInputs.totals.b, domCache.acbInputs.totals.c].forEach(element => {
+                element.classList.add('acb-output');
+                element.classList.remove('acb-prefilled');
+            });
+
+            domCache.acbInputs.totals.result.classList.toggle('acb-prefilled', totalResult.isZero());
+            domCache.acbInputs.totals.result.classList.toggle('acb-output', !totalResult.isZero());
+        }
+
+        function printWithCheck() {
+            if (window.innerWidth <= 768 && !confirm("Use a larger screen for optimal printing. Continue?")) return;
+            window.print();
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            domCache.assayGroup.style.display = "none";
+            domCache.waterGroup.style.display = "none";
+            domCache.buttons.style.display = "none";
+            domCache.calculationSteps.classList.add("hidden");
+            domCache.QInput.disabled = true;
+            domCache.stdQtyInput.focus();
+
+            [domCache.QInput, domCache.waterInput, domCache.assayInput].forEach(input => {
+                input.addEventListener("input", e => {
+                    validateInput(input);
+                    handleInput(e);
+                });
+                input.addEventListener("keydown", e => {
+                    if (e.key === "ArrowUp" || e.key === "ArrowDown") e.preventDefault();
+                    if (e.key === "Enter") handleInput(e);
+                });
+                input.addEventListener("contextmenu", e => e.preventDefault());
+            });
+
+            domCache.acbCalculator.addEventListener("input", e => {
+                const input = e.target;
+                const match = input.id.match(/lot(\d+)-([abc])/);
+                if (match) {
+                    const [, lotIndex, type] = match;
+                    validateInput(input);
+                    updateACB(input, parseInt(lotIndex) - 1, type);
+                    if ((type === 'a' || type === 'c') && isACBEditingEnabled) showACBNotice();
+                }
+            });
+
+            const inputFields = ['a', 'b', 'c'].flatMap(type => [1, 2, 3, 4].map(i => `lot${i}-${type}`));
+            inputFields.forEach((id, index) => {
+                const input = document.getElementById(id);
+                if (input) {
+                    input.addEventListener('keydown', e => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            let nextIndex = index + 1;
+                            while (nextIndex < inputFields.length) {
+                                if (nextIndex >= inputFields.length) nextIndex = 0;
+                                const nextInput = document.getElementById(inputFields[nextIndex]);
+                                if (nextInput && !nextInput.readOnly) {
+                                    nextInput.focus();
+                                    break;
+                                }
+                                nextIndex++;
+                            }
+                        }
+                    });
+                }
+            });
+
+            domCache.stdQtyInput.addEventListener('input', () => {
+                validateInput(domCache.stdQtyInput);
+                updateQuantityTracker();
+            });
+
+            domCache.remainingQty.addEventListener('click', copyRemainingToQ);
+            domCache.lotSelect.addEventListener('change', updateLotDispensedQty);
+            updateQuantityTracker();
+
+            if (!isMathJaxReady) {
+                domCache.mathJaxLoading.style.display = 'block';
+                setTimeout(() => {
+                    if (!isMathJaxReady) retryMathJaxLoad();
+                }, CONSTANTS.MATHJAX_TIMEOUT);
+            }
+
+            window.addEventListener('beforeunload', e => {
+                if (calculationCount > 0) {
+                    e.preventDefault();
+                    e.returnValue = 'You have unsaved calculations. Sure to leave?';
+                }
+            });
+        });
+
+        window.addEventListener('resize', updatePageNumbers);
+    </script>
+</body>
+</html>
