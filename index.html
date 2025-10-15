@@ -13,19 +13,23 @@
             font-family: 'Inter', sans-serif;
             margin: 0;
             padding: 0;
-            background-color: #f7f7f7; /* Background to simulate website content */
+            /* Using a dark background color based on your screenshot for consistency */
+            background-color: #1a1a1a; 
         }
         /* Custom scrollbar for chat window */
         #chat-feed::-webkit-scrollbar {
             width: 8px;
         }
         #chat-feed::-webkit-scrollbar-thumb {
-            background-color: #d1d5db; /* Gray-300 */
+            background-color: #4b5563; 
             border-radius: 4px;
         }
-        /* Hide the initial content until Firebase is ready */
-        .hidden-until-ready {
-            display: none !important;
+        #chat-feed::-webkit-scrollbar-track {
+            background: #374151;
+        }
+        /* Ensure the modal appears over everything */
+        #chat-modal {
+            z-index: 9999;
         }
     </style>
 </head>
@@ -34,48 +38,48 @@
     <!-- Main Chat Container (Modal) -->
     <div id="chat-modal" class="fixed inset-0 z-50 hidden md:flex items-end justify-end p-4 md:p-8" onclick="closeModalOutside(event)">
         <!-- Inner Chat Box -->
-        <div id="chat-box" class="bg-white rounded-xl shadow-2xl flex flex-col w-full max-w-sm h-[85vh] md:h-[600px] transform transition-all duration-300 ease-out scale-95 opacity-0">
+        <div id="chat-box" class="bg-gray-800 rounded-xl shadow-2xl flex flex-col w-full max-w-sm h-[85vh] md:h-[600px] transform transition-all duration-300 ease-out scale-95 opacity-0 text-white">
             <!-- Header -->
-            <div class="p-4 border-b border-gray-100 bg-orange-600 text-white rounded-t-xl flex justify-between items-center">
+            <div class="p-4 border-b border-gray-700 bg-orange-700 text-white rounded-t-xl flex justify-between items-center">
                 <h2 class="text-xl font-bold">Collaborative Planning</h2>
-                <button onclick="toggleModal()" class="text-white hover:text-gray-100 p-1 rounded-full hover:bg-orange-700 transition duration-150">
+                <button onclick="toggleModal()" class="text-white hover:text-gray-200 p-1 rounded-full hover:bg-orange-800 transition duration-150">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
 
             <!-- User Info (for tracking collaborators) -->
-            <div class="px-4 py-2 bg-orange-100 text-sm text-gray-700 flex justify-between">
-                <span>Your ID: <strong id="user-id-display">Loading...</strong></span>
-                <span id="auth-status-display" class="font-medium text-xs text-orange-600">Connecting...</span>
+            <div class="px-4 py-2 bg-gray-700 text-sm flex justify-between">
+                <span>Your ID: <strong id="user-id-display" class="text-orange-300">Loading...</strong></span>
+                <span id="auth-status-display" class="font-medium text-xs text-orange-400">Connecting...</span>
             </div>
 
             <!-- Chat Feed (Messages/Planning Items) -->
-            <div id="chat-feed" class="flex-grow p-4 space-y-4 overflow-y-auto bg-gray-50">
-                <div id="loading-indicator" class="text-center p-8 text-gray-500">
+            <div id="chat-feed" class="flex-grow p-4 space-y-4 overflow-y-auto bg-gray-900">
+                <div id="loading-indicator" class="text-center p-8 text-gray-400">
                     Loading messages...
                 </div>
             </div>
 
             <!-- Input Area -->
-            <div class="p-4 border-t border-gray-200">
+            <div class="p-4 border-t border-gray-700 bg-gray-800">
                 <div class="flex items-center space-x-2">
                     <!-- Planning / Add Button -->
-                    <button id="add-planning-btn" onclick="showPlanningInput()" class="bg-green-500 hover:bg-green-600 text-white p-3 rounded-full shadow-lg transition duration-150 transform hover:scale-105" title="Start a New Planning Task">
+                    <button id="add-planning-btn" onclick="showPlanningInput()" class="bg-green-600 hover:bg-green-700 text-white p-3 rounded-full shadow-lg transition duration-150 transform hover:scale-105" title="Start a New Planning Task">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
                     </button>
 
                     <!-- Text Input -->
                     <input type="text" id="message-input" placeholder="Type a message or planning detail..."
-                        class="flex-grow p-3 border border-gray-300 rounded-full focus:ring-orange-500 focus:border-orange-500 transition duration-150">
+                        class="flex-grow p-3 border border-gray-600 rounded-full focus:ring-orange-500 focus:border-orange-500 transition duration-150 bg-gray-700 text-white placeholder-gray-400">
                     
                     <!-- Image Upload Button -->
-                    <button onclick="document.getElementById('image-upload').click()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 p-3 rounded-full transition duration-150" title="Upload Image">
+                    <button onclick="document.getElementById('image-upload').click()" class="bg-gray-600 hover:bg-gray-500 text-white p-3 rounded-full transition duration-150" title="Upload Image">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                     </button>
                     <input type="file" id="image-upload" accept="image/*" class="hidden" onchange="uploadImage(event)">
                     
                     <!-- Send Button -->
-                    <button id="send-btn" onclick="sendMessage()" class="bg-orange-500 hover:bg-orange-600 text-white p-3 rounded-full transition duration-150" title="Send Message">
+                    <button id="send-btn" onclick="sendMessage()" class="bg-orange-600 hover:bg-orange-700 text-white p-3 rounded-full transition duration-150" title="Send Message">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
                     </button>
                 </div>
@@ -84,26 +88,39 @@
     </div>
 
     <!-- Floating Chat Logo/Button -->
-    <button id="chat-icon" onclick="toggleModal()" class="fixed bottom-6 right-6 z-40 bg-orange-600 text-white p-4 rounded-full shadow-xl hover:bg-orange-700 transition duration-300 transform hover:scale-105">
+    <button id="chat-icon" onclick="toggleModal()" class="fixed bottom-6 right-6 z-[10000] bg-orange-700 text-white p-4 rounded-full shadow-xl hover:bg-orange-800 transition duration-300 transform hover:scale-105">
         <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h.01M16 11h.01M7 15h10a1 1 0 011 1v4a1 1 0 01-1 1H7a1 1 0 01-1-1v-4a1 1 0 011-1z"></path></svg>
     </button>
     
-    <!-- Firebase Libraries -->
+    <!-- Firebase Libraries and Script Logic -->
     <script type="module">
+        // Import only necessary functions: initializeApp, Auth, and Firestore
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, orderBy, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, updateDoc, onSnapshot, collection, query, orderBy, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Global variables provided by the environment (MANDATORY USE)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // VVVVVVVV  PASTED FIREBASE CONFIGURATION  VVVVVVVV
+        const firebaseConfig = {
+            apiKey: "AIzaSyAfGzkSg6U49-wXy-mvMd2OdqJ3qHo5Ouk",
+            authDomain: "beta8-434f9.firebaseapp.com",
+            projectId: "beta8-434f9",
+            storageBucket: "beta8-434f9.firebasestorage.app",
+            messagingSenderId: "948269597618",
+            appId: "1:948269597618:web:134ea662b3085db5a01aab",
+            measurementId: "G-1VG5P6XSGQ"
+        };
+        
+        // This is a custom identifier for your app's data in Firestore path.
+        const customAppId = 'nir8-beta-chat-v1'; 
+        
+        // ^^^^^^^^  END OF FIREBASE CONFIGURATION  ^^^^^^^^
 
         let app;
         let db;
         let auth;
         let userId = 'anonymous';
         let isAuthReady = false;
+        const appId = customAppId; 
 
         // --- CORE FIREBASE INITIALIZATION & AUTH ---
 
@@ -115,24 +132,21 @@
             db = getFirestore(app);
             auth = getAuth(app);
             
-            // 1. Check for custom token, otherwise sign in anonymously
+            // This listener handles the sign-in process
             onAuthStateChanged(auth, async (user) => {
                 const authStatusDisplay = document.getElementById('auth-status-display');
                 if (user) {
                     userId = user.uid;
                     authStatusDisplay.textContent = 'Connected';
-                    authStatusDisplay.classList.remove('text-orange-600');
-                    authStatusDisplay.classList.add('text-green-600');
-                } else if (initialAuthToken) {
-                    // Use custom token if provided
-                    await signInWithCustomToken(auth, initialAuthToken);
+                    authStatusDisplay.classList.remove('text-orange-400', 'text-red-600');
+                    authStatusDisplay.classList.add('text-green-400');
                 } else {
-                    // Sign in anonymously if no token is available
+                    // Sign in anonymously 
                     await signInAnonymously(auth);
                 }
 
                 // Update UI and start listening for data after auth is resolved
-                document.getElementById('user-id-display').textContent = userId.substring(0, 8); // Display first 8 chars for brevity
+                document.getElementById('user-id-display').textContent = userId.substring(0, 8); 
                 isAuthReady = true;
                 if (db) {
                     listenForData();
@@ -142,14 +156,13 @@
         } catch (error) {
             console.error("Firebase initialization failed:", error);
             document.getElementById('auth-status-display').textContent = 'Error: Check console';
-            document.getElementById('auth-status-display').classList.remove('text-orange-600');
+            document.getElementById('auth-status-display').classList.remove('text-orange-400');
             document.getElementById('auth-status-display').classList.add('text-red-600');
         }
 
         // --- UTILITY FUNCTIONS ---
 
         function generateUserName(id) {
-            // Use the first 4 characters of the ID to create a simple unique identifier
             return 'User-' + id.substring(0, 4);
         }
 
@@ -162,18 +175,15 @@
 
             if (isHidden) {
                 modal.classList.remove('hidden');
-                // Use setTimeout to trigger transition after display block
                 setTimeout(() => {
                     box.classList.remove('scale-95', 'opacity-0');
                     box.classList.add('scale-100', 'opacity-100');
-                    // Scroll to bottom when opening
                     const feed = document.getElementById('chat-feed');
                     feed.scrollTop = feed.scrollHeight;
                 }, 10); 
             } else {
                 box.classList.remove('scale-100', 'opacity-100');
                 box.classList.add('scale-95', 'opacity-0');
-                // Hide modal after transition completes
                 setTimeout(() => {
                     modal.classList.add('hidden');
                 }, 300);
@@ -181,18 +191,16 @@
         }
 
         window.closeModalOutside = function(event) {
-            // Only close if the click target is the modal backdrop, not the chat box itself
             if (event.target === document.getElementById('chat-modal')) {
                 toggleModal();
             }
         }
 
-        // Show a temporary message in the input field to indicate planning mode
         window.showPlanningInput = function() {
             const input = document.getElementById('message-input');
             input.dataset.mode = 'planning';
             input.placeholder = "Enter planning task details...";
-            input.classList.remove('border-gray-300', 'focus:border-orange-500');
+            input.classList.remove('border-gray-600', 'focus:border-orange-500');
             input.classList.add('border-green-500', 'focus:border-green-500');
         }
 
@@ -201,17 +209,16 @@
             input.dataset.mode = 'text';
             input.placeholder = "Type a message or planning detail...";
             input.classList.remove('border-green-500', 'focus:border-green-500');
-            input.classList.add('border-gray-300', 'focus:border-orange-500');
+            input.classList.add('border-gray-600', 'focus:border-orange-500');
         }
 
         // --- FIRESTORE DATA FUNCTIONS ---
 
         function getCollectionRef() {
-            // Public path for collaborative data
+            // Public path for collaborative data: /artifacts/{appId}/public/data/planning_chat
             return collection(db, `artifacts/${appId}/public/data/planning_chat`);
         }
 
-        // Send a regular text message or a planning task
         window.sendMessage = async function() {
             const input = document.getElementById('message-input');
             const content = input.value.trim();
@@ -242,16 +249,11 @@
             }
         }
 
-        // Handle image upload (NOTE: Images are NOT stored in Firestore, only their URL is. 
-        // This example uses a simple placeholder URL as file storage is complex for a single-file app.)
         window.uploadImage = async function(event) {
             const file = event.target.files[0];
             if (!file || !isAuthReady) return;
 
-            // In a real application, you would upload the file to a storage service (like Firebase Storage)
-            // and get a publicly accessible URL.
-            // For this single-file demonstration, we will use a placeholder image URL.
-
+            // Using a simple placeholder URL for demo purposes.
             const tempImageUrl = `https://placehold.co/300x200/5e8d98/FFFFFF?text=Image+by+${generateUserName(userId)}`;
             
             const message = {
@@ -270,7 +272,6 @@
             }
         }
 
-        // Toggle the completion status of a planning task
         window.toggleCompletion = async function(docId, currentStatus) {
             if (!isAuthReady) return;
             const docRef = doc(db, getCollectionRef().path, docId);
@@ -290,7 +291,7 @@
             
             onSnapshot(q, (snapshot) => {
                 const feedElement = document.getElementById('chat-feed');
-                feedElement.innerHTML = ''; // Clear previous messages
+                feedElement.innerHTML = ''; 
                 document.getElementById('loading-indicator').style.display = 'none';
                 
                 snapshot.forEach((doc) => {
@@ -299,8 +300,8 @@
                     feedElement.appendChild(renderMessage(data, docId));
                 });
 
-                // Always scroll to the bottom on new data
-                feedElement.scrollTop = feedElement.scrollHeight;
+                const feed = document.getElementById('chat-feed');
+                feed.scrollTop = feed.scrollHeight;
             }, (error) => {
                 console.error("Error listening to Firestore:", error);
                 document.getElementById('loading-indicator').textContent = 'Error loading messages.';
@@ -312,17 +313,16 @@
             messageEl.className = 'w-full flex';
             const isCurrentUser = data.userId === userId;
             
-            // Basic chat bubble container setup
             const bubbleClasses = isCurrentUser 
-                ? 'bg-orange-500 text-white self-end rounded-br-none' 
-                : 'bg-gray-200 text-gray-800 self-start rounded-tl-none';
+                ? 'bg-orange-600 text-white self-end rounded-br-none' 
+                : 'bg-gray-700 text-gray-100 self-start rounded-tl-none';
             const alignmentClass = isCurrentUser ? 'justify-end' : 'justify-start';
 
             if (data.type === 'planning') {
                 // --- PLANNING TASK RENDER ---
                 const statusClasses = data.isCompleted 
-                    ? 'bg-green-100 border-green-500 text-green-700' 
-                    : 'bg-orange-100 border-orange-500 text-orange-700';
+                    ? 'bg-green-800 border-green-500 text-green-200' 
+                    : 'bg-orange-800 border-orange-500 text-orange-200';
 
                 messageEl.className = `w-full flex ${alignmentClass}`;
                 messageEl.innerHTML = `
@@ -332,10 +332,10 @@
                             <span class="text-xs font-semibold uppercase tracking-wider">
                                 ${data.isCompleted ? '✅ Completed' : '⏳ Pending'}
                             </span>
-                            <span class="text-xs text-gray-500">${data.userName}</span>
+                            <span class="text-xs text-gray-400">${data.userName}</span>
                         </div>
                         <p class="text-base font-medium">${data.content}</p>
-                        <span class="text-xs text-gray-400 mt-1 block">${new Date(data.timestamp).toLocaleTimeString()}</span>
+                        <span class="text-xs text-gray-500 mt-1 block">${new Date(data.timestamp).toLocaleTimeString()}</span>
                     </div>
                 `;
 
@@ -345,7 +345,7 @@
                 messageEl.innerHTML = `
                     <div class="max-w-xs p-2 rounded-xl shadow-md ${bubbleClasses} transition duration-150">
                         <img src="${data.content}" alt="User uploaded image" class="rounded-lg w-full h-auto object-cover border-4 border-white shadow-inner">
-                        <span class="text-xs ${isCurrentUser ? 'text-gray-100' : 'text-gray-600'} block mt-1">
+                        <span class="text-xs ${isCurrentUser ? 'text-gray-200' : 'text-gray-300'} block mt-1">
                             Posted by ${data.userName} at ${new Date(data.timestamp).toLocaleTimeString()}
                         </span>
                     </div>
@@ -357,7 +357,7 @@
                 messageEl.innerHTML = `
                     <div class="max-w-xs p-3 rounded-xl shadow-md ${bubbleClasses} transition duration-150">
                         <p class="text-sm break-words">${data.content}</p>
-                        <div class="text-right text-xs mt-1 ${isCurrentUser ? 'text-gray-200' : 'text-gray-500'}">
+                        <div class="text-right text-xs mt-1 ${isCurrentUser ? 'text-gray-200' : 'text-gray-400'}">
                             ${data.userName} - ${new Date(data.timestamp).toLocaleTimeString()}
                         </div>
                     </div>
