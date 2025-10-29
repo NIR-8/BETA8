@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Production Batch Planner</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Lucide Icons for a clean interface -->
+    <script type="module">
+        import { createIcons, icons } from 'https://cdn.jsdelivr.net/npm/lucide@latest/dist/esm/lucide.js';
+        document.addEventListener('DOMContentLoaded', () => {
+            createIcons({ icons });
+        });
+    </script>
+    <style>
+        /* Custom scrollbar for better appearance */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: rgba(156, 163, 175, 0.5); /* gray-400 */
+            border-radius: 4px;
+        }
+        .custom-scrollbar {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 font-sans transition-colors duration-300">
+
+    <!-- Loading/Authentication Overlay -->
+    <div id="auth-overlay" class="fixed inset-0 bg-gray-100 dark:bg-gray-900 flex items-center justify-center z-50">
+        <div id="loading-spinner" class="flex flex-col items-center">
+            <svg class="animate-spin h-12 w-12 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span class="mt-3 text-lg text-gray-700 dark:text-gray-300">Preparing services...</span>
+        </div>
+        
+        <!-- Login Form (Initially Hidden by JS, shown after services are prepared) -->
+        <div id="login-form-container" class="hidden bg-white dark:bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-sm">
+            <h2 class="text-2xl font-bold mb-6 text-gray-900 dark:text-white text-center">Login to Planner</h2>
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <label for="user-id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">User ID</label>
+                    <input type="text" id="user-id" value="TM232615" class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 p-3 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500" required>
+                </div>
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
+                    <input type="password" id="password" value="Nir8@1234" class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 p-3 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500" required>
+                </div>
+                <p id="login-error" class="text-sm text-red-500 hidden"></p>
+                <button type="submit" id="login-btn" class="w-full py-3 px-4 rounded-lg text-white font-semibold transition duration-150 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400">
+                    Sign In
+                </button>
+            </form>
+            <p class="text-xs text-gray-400 mt-4 text-center">Currently accepting: TM232615 / Nir8@1234</p>
+        </div>
+    </div>
+
+    <!-- Main Application Container -->
+    <div id="app-container" class="max-w-7xl mx-auto p-4 md:p-8 opacity-0 transition-opacity duration-500">
+        
+        <!-- Header -->
+        <header class="mb-6 bg-white dark:bg-gray-800 rounded-xl shadow-xl p-4 md:p-6 flex flex-col md:flex-row justify-between items-start md:items-center">
+            <div class="flex items-center">
+                <i data-lucide="truck" class="h-8 w-8 text-blue-600 mr-3"></i>
+                <div>
+                    <h1 class="text-3xl font-extrabold text-gray-900 dark:text-white">Batch Planning & Collaboration</h1>
+                    <p class="text-sm mt-1 text-gray-500 dark:text-gray-400">Real-time scheduling and communication tool.</p>
+                </div>
+            </div>
+            <p class="text-sm mt-3 md:mt-0 text-gray-500 dark:text-gray-400">
+                Logged in as: <span id="user-id-display" class="font-mono bg-green-100 dark:bg-green-800 px-2 py-1 rounded-lg text-xs font-semibold text-green-700 dark:text-green-200">...</span>
+            </p>
+        </header>
+
+        <!-- Main Content Wrapper -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full min-h-[70vh]">
+            
+            <!-- Left Column: Batch Planner (2/3 width on Desktop) -->
+            <div class="lg:col-span-2 flex flex-col h-full">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-200 flex items-center">
+                        <i data-lucide="calendar" class="h-5 w-5 mr-2"></i> Production Schedule
+                    </h2>
+                    <button id="add-batch-btn" class="py-2 px-4 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow-md transition duration-200 flex items-center">
+                        <i data-lucide="plus" class="h-5 w-5 mr-1"></i> Add Batch
+                    </button>
+                </div>
+                
+                <!-- Batch List Container -->
+                <div id="batch-list" class="flex-1 overflow-y-auto space-y-3 p-2 bg-white dark:bg-gray-800 rounded-xl shadow-lg custom-scrollbar">
+                    <!-- Batches will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Right Column: Live Chat (1/3 width on Desktop) -->
+            <div class="lg:col-span-1 flex flex-col h-[70vh] lg:h-full">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800 dark:text-gray-200 flex items-center">
+                    <i data-lucide="messages-square" class="h-5 w-5 mr-2"></i> Live Chat
+                </h2>
+                <div class="flex-1 flex flex-col bg-white dark:bg-gray-800 rounded-xl shadow-lg">
+                    <!-- Messages Display -->
+                    <div id="chat-messages" class="flex-1 overflow-y-auto space-y-4 p-4 custom-scrollbar">
+                        <!-- Messages will be inserted here -->
+                    </div>
+
+                    <!-- Chat Input -->
+                    <form id="chat-form" class="p-3 border-t border-gray-200 dark:border-gray-700 flex">
+                        <input type="text" id="chat-input" placeholder="Type a message..." class="flex-1 rounded-l-full border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 p-3 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                        <button type="submit" id="send-btn" class="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-r-full flex items-center justify-center transition duration-150 disabled:bg-gray-400">
+                            <i data-lucide="send" class="h-5 w-5"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Batch Modal for Add/Edit -->
+    <div id="batch-modal" class="hidden fixed inset-0 z-50 bg-gray-900 bg-opacity-70 flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md shadow-2xl transform transition-all">
+            <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 id="modal-title" class="text-xl font-bold text-gray-900 dark:text-white">New Batch Plan</h2>
+                <button id="modal-close-btn" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                    <i data-lucide="x" class="h-6 w-6"></i>
+                </button>
+            </div>
+            <form id="batch-form" class="p-6 space-y-4">
+                <input type="hidden" id="batch-id">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Batch Number (Unique ID)</label>
+                    <input type="text" id="batch-number" class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 p-3 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., BATCH-123" required>
+                </div>
+                <div class="flex space-x-4">
+                    <div class="w-1/2">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
+                        <input type="date" id="batch-date" class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 p-3 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500" required>
+                    </div>
+                    <div class="w-1/2">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Shift</label>
+                        <select id="batch-shift" class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 p-3 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500" required>
+                            <option value="A">A</option>
+                            <option value="B">B</option>
+                            <option value="C">C</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" id="modal-submit-btn" class="w-full py-3 px-4 rounded-lg text-white font-semibold transition duration-150 bg-blue-600 hover:bg-blue-700">
+                    Save Plan
+                </button>
+            </form>
+        </div>
+    </div>
+
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, updateDoc, onSnapshot, collection, query, orderBy, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Global Variables (Provided by Canvas Environment) ---
+    const firebaseConfig = {
+          apiKey: "AIzaSyCWPrcySe2fARGHYgYhN_3kYvsz_YHMlj0",
+            authDomain: "beta8-5f5d4.firebaseapp.com",
+              projectId: "beta8-5f5d4",
+                storageBucket: "beta8-5f5d4.firebasestorage.app",
+                  messagingSenderId: "981950521525",
+                    appId: "1:981950521525:web:d691ac5ca62b2a0eb21efc",
+                      measurementId: "G-NCY62NGTCQ"
+                      
+    }
+        // --- Firebase/Auth Instances and State ---
+        let db;
+        let auth;
+        let currentUserId = null; // This will hold the custom ID (e.g., 'TM232615')
+
+        // --- Constants ---
+        const VALID_USER_ID = 'TM232615';
+        const VALID_PASSWORD = 'Nir8@1234';
+        const STATUS_COLORS = {
+            Scheduled: { bg: 'bg-orange-500', text: 'text-orange-500', border: 'border-orange-500' },
+            Running: { bg: 'bg-blue-500', text: 'text-blue-500', border: 'border-blue-500' },
+            Dispensed: { bg: 'bg-green-500', text: 'text-green-500', border: 'border-green-500' },
+        };
+        const SHIFTS = ['A', 'B', 'C'];
+        const BATCH_COLLECTION_PATH = `artifacts/${appId}/public/data/batches`;
+        const MESSAGE_COLLECTION_PATH = `artifacts/${appId}/public/data/messages`;
+
+        // --- DOM Elements ---
+        const $ = (selector) => document.querySelector(selector);
+        
+        const loadingSpinner = $('#loading-spinner');
+        const authOverlay = $('#auth-overlay');
+        const loginFormContainer = $('#login-form-container');
+        const loginForm = $('#login-form');
+        const loginBtn = $('#login-btn');
+        const loginError = $('#login-error');
+        const userIdInput = $('#user-id');
+        const passwordInput = $('#password');
+
+        const appContainer = $('#app-container');
+        const userIdDisplay = $('#user-id-display');
+        const batchList = $('#batch-list');
+        const chatMessages = $('#chat-messages');
+        const chatForm = $('#chat-form');
+        const chatInput = $('#chat-input');
+        const sendBtn = $('#send-btn');
+        const addBatchBtn = $('#add-batch-btn');
+        const modal = $('#batch-modal');
+        const modalTitle = $('#modal-title');
+        const modalCloseBtn = $('#modal-close-btn');
+        const batchForm = $('#batch-form');
+        const batchNumberInput = $('#batch-number');
+        const batchDateInput = $('#batch-date');
+        const batchShiftSelect = $('#batch-shift');
+        const batchIdInput = $('#batch-id');
+        const modalSubmitBtn = $('#modal-submit-btn');
+
+        // --- Utility Functions ---
+
+        const formatTimestamp = (timestamp) => {
+            if (!timestamp) return '...';
+            const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+            return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        };
+
+        const showMessage = (message) => {
+            const msgBox = document.createElement('div');
+            msgBox.className = 'fixed top-5 right-5 z-[100] p-4 bg-red-600 text-white rounded-lg shadow-xl animate-bounce';
+            msgBox.textContent = message;
+            document.body.appendChild(msgBox);
+            setTimeout(() => {
+                msgBox.remove();
+            }, 3000);
+        };
+
+        const scrollToBottom = () => {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        };
+
+        // --- Core Authentication and Initialization ---
+
+        /**
+         * Initializes Firebase services and prepares the UI for login.
+         */
+        async function initialize() {
+            if (Object.keys(firebaseConfig).length === 0) {
+                console.error("Firebase config is missing.");
+                showMessage("Database configuration error.");
+                loadingSpinner.classList.add('hidden');
+                return;
+            }
+
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                // Sign in anonymously immediately to satisfy Firestore security rules
+                // The actual user identity is managed by currentUserId locally
+                await signInAnonymously(auth); 
+                
+                // Hide loading, show login form
+                loadingSpinner.classList.add('hidden');
+                loginFormContainer.classList.remove('hidden');
+
+            } catch (e) {
+                console.error("Firebase initialization failed:", e);
+                showMessage("Failed to connect to services.");
+                loadingSpinner.classList.add('hidden');
+            }
+        }
+        
+        /**
+         * Handles the custom login form submission.
+         */
+        async function handleLoginSubmit(e) {
+            e.preventDefault();
+            const id = userIdInput.value.trim();
+            const password = passwordInput.value.trim();
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Verifying...';
+            loginError.classList.add('hidden');
+
+            if (id === VALID_USER_ID && password === VALID_PASSWORD) {
+                // Login successful
+                currentUserId = id;
+                userIdDisplay.textContent = currentUserId;
+                authOverlay.style.display = 'none';
+                appContainer.style.opacity = 1;
+
+                // Start data listeners only after successful login
+                startListeners();
+            } else {
+                // Login failed
+                loginError.textContent = 'Invalid User ID or Password.';
+                loginError.classList.remove('hidden');
+            }
+
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Sign In';
+        }
+
+
+        /**
+         * Starts real-time listeners for batches and messages.
+         */
+        function startListeners() {
+            if (!db) return;
+
+            // 1. Batch Schedule Listener
+            const batchesRef = collection(db, BATCH_COLLECTION_PATH);
+            onSnapshot(batchesRef, (snapshot) => {
+                const batchListRaw = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                // Client-side sorting by date (oldest first)
+                batchListRaw.sort((a, b) => {
+                    if (!a.date || !b.date) return 0;
+                    return new Date(a.date) - new Date(b.date);
+                });
+                renderBatches(batchListRaw);
+            }, (error) => {
+                console.error('Error fetching batches:', error);
+                showMessage('Could not load batch data.');
+            });
+
+            // 2. Chat Messages Listener
+            const messagesRef = collection(db, MESSAGE_COLLECTION_PATH);
+            const q = query(messagesRef, orderBy('timestamp', 'asc'));
+
+            onSnapshot(q, (snapshot) => {
+                const messageListRaw = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                renderMessages(messageListRaw);
+                scrollToBottom();
+            }, (error) => {
+                console.error('Error fetching messages:', error);
+                showMessage('Could not load chat messages.');
+            });
+        }
+
+        // --- Rendering Functions (Unchanged from previous version, adapted to use currentUserId) ---
+
+        function renderBatches(batches) {
+            batchList.innerHTML = ''; 
+
+            if (batches.length === 0) {
+                batchList.innerHTML = `
+                    <div class="text-center text-gray-500 dark:text-gray-400 p-10 bg-white dark:bg-gray-800 rounded-xl">
+                        No batches scheduled yet. Click the 'Add Batch' button!
+                    </div>
+                `;
+                return;
+            }
+
+            batches.forEach(batch => {
+                const statusConfig = STATUS_COLORS[batch.status] || STATUS_COLORS['Scheduled'];
+                const item = document.createElement('div');
+                item.className = 'p-4 bg-white dark:bg-gray-700 rounded-xl shadow-lg flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-3 sm:space-y-0 border-l-4 transition hover:shadow-xl';
+                item.style.borderColor = statusConfig.border.replace('border-', '#').replace('-500', '00'); 
+
+                item.innerHTML = `
+                    <div class="flex-1 min-w-0">
+                        <div class="font-bold text-lg dark:text-white truncate">${batch.batchNumber}</div>
+                        <div class="text-sm text-gray-500 dark:text-gray-300 flex items-center space-x-4 mt-1">
+                            <span class="flex items-center"><i data-lucide="calendar" class="h-4 w-4 mr-1"></i> ${batch.date}</span>
+                            <span class="flex items-center"><i data-lucide="clock" class="h-4 w-4 mr-1"></i> Shift ${batch.shift}</span>
+                        </div>
+                        <div class="text-xs text-gray-400 dark:text-gray-400 mt-1">
+                            Modified by: ${batch.lastModifiedBy || 'N/A'}
+                        </div>
+                    </div>
+                    
+                    <div class="flex flex-col items-start sm:items-end space-y-2 w-full sm:w-auto">
+                        <div class="text-xs font-semibold px-3 py-1 rounded-full text-white ${statusConfig.bg}">
+                            ${batch.status}
+                        </div>
+                        
+                        <div class="flex space-x-2 flex-wrap gap-y-1">
+                            ${Object.keys(STATUS_COLORS).filter(s => s !== batch.status).map(status => `
+                                <button data-batch-id="${batch.id}" data-status="${status}" class="update-status-btn text-xs font-medium px-2 py-1 rounded-lg transition duration-150 ${STATUS_COLORS[status].bg} hover:opacity-80 text-white">
+                                    ${status}
+                                </button>
+                            `).join('')}
+                            <button data-batch-id="${batch.id}" class="edit-batch-btn text-xs font-medium px-2 py-1 rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 transition duration-150">
+                                <i data-lucide="edit" class="h-4 w-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                batchList.appendChild(item);
+                if (window.lucide) window.lucide.createIcons({ icons: window.lucide.icons });
+            });
+        }
+
+        function renderMessages(messages) {
+            chatMessages.innerHTML = ''; 
+            
+            messages.forEach(msg => {
+                const isMine = msg.userId === currentUserId;
+                const containerClass = isMine ? 'justify-end' : 'justify-start';
+                const bubbleClass = isMine
+                    ? 'bg-blue-600 text-white rounded-br-none'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-tl-none';
+                const timeClass = isMine ? 'text-blue-100' : 'text-gray-400 dark:text-gray-400';
+
+                const item = document.createElement('div');
+                item.className = `flex ${containerClass}`;
+                
+                item.innerHTML = `
+                    <div class="flex flex-col max-w-[80%] p-3 rounded-2xl shadow-md transition-transform duration-300 ease-in-out ${bubbleClass}">
+                        <div class="font-semibold text-xs opacity-80 mb-1 ${isMine ? 'text-blue-200' : 'text-gray-500 dark:text-gray-300'}">
+                            ${isMine ? 'You' : `User ${msg.userId}`}
+                        </div>
+                        <p class="text-sm break-words">${msg.text}</p>
+                        <div class="text-right mt-1 ${timeClass} text-xs">
+                            ${formatTimestamp(msg.timestamp)}
+                        </div>
+                    </div>
+                `;
+                chatMessages.appendChild(item);
+            });
+            scrollToBottom();
+        }
+
+        // --- Data Manipulation Functions ---
+
+        async function updateBatchStatus(batchId, newStatus) {
+            if (!db || !currentUserId) return showMessage('Please log in first.');
+            try {
+                const batchRef = doc(db, BATCH_COLLECTION_PATH, batchId);
+                await updateDoc(batchRef, {
+                    status: newStatus,
+                    lastModifiedBy: currentUserId,
+                    timestamp: serverTimestamp(),
+                });
+            } catch (error) {
+                console.error('Error updating status:', error);
+                showMessage('Failed to update batch status.');
+            }
+        }
+
+        async function handleBatchFormSubmit(e) {
+            e.preventDefault();
+            if (!db || !currentUserId) return showMessage('Please log in first.');
+
+            const batchId = batchIdInput.value;
+            const batchNumber = batchNumberInput.value.trim();
+            const date = batchDateInput.value;
+            const shift = batchShiftSelect.value;
+            const isEditing = !!batchId;
+
+            modalSubmitBtn.disabled = true;
+            modalSubmitBtn.textContent = isEditing ? 'Saving...' : 'Creating...';
+            
+            try {
+                const batchData = {
+                    batchNumber: batchNumber,
+                    date,
+                    shift,
+                    lastModifiedBy: currentUserId,
+                    timestamp: serverTimestamp(),
+                };
+                
+                if (isEditing) {
+                    const docRef = doc(db, BATCH_COLLECTION_PATH, batchId);
+                    await updateDoc(docRef, batchData);
+                } else {
+                    const newDocRef = doc(db, BATCH_COLLECTION_PATH, batchNumber);
+                    const docSnap = await getDoc(newDocRef);
+                    
+                    if (docSnap.exists()) {
+                         showMessage(`Batch number "${batchNumber}" already exists.`);
+                         return;
+                    }
+                    batchData.status = 'Scheduled';
+                    batchData.createdBy = currentUserId;
+                    await setDoc(newDocRef, batchData);
+                }
+
+                closeModal();
+            } catch (error) {
+                console.error('Error saving batch:', error);
+                showMessage(`Failed to save batch: ${error.message}`);
+            } finally {
+                modalSubmitBtn.disabled = false;
+                modalSubmitBtn.textContent = isEditing ? 'Save Changes' : 'Create Plan';
+            }
+        }
+
+        async function handleChatFormSubmit(e) {
+            e.preventDefault();
+            const messageText = chatInput.value.trim();
+            if (!messageText || !db || !currentUserId) return;
+
+            sendBtn.disabled = true;
+            try {
+                const messagesRef = collection(db, MESSAGE_COLLECTION_PATH);
+                await setDoc(doc(messagesRef), {
+                    text: messageText,
+                    userId: currentUserId,
+                    timestamp: serverTimestamp(),
+                });
+                chatInput.value = '';
+            } catch (error) {
+                console.error('Error sending message:', error);
+                showMessage('Failed to send message.');
+            } finally {
+                sendBtn.disabled = false;
+            }
+        }
+
+        // --- Modal/UI Handlers ---
+
+        function openAddModal() {
+            if (!currentUserId) return showMessage('Please log in to add plans.');
+            modalTitle.textContent = 'New Batch Plan';
+            batchIdInput.value = '';
+            batchNumberInput.value = '';
+            batchNumberInput.disabled = false;
+            batchDateInput.value = new Date().toISOString().split('T')[0];
+            batchShiftSelect.value = SHIFTS[0];
+            modalSubmitBtn.textContent = 'Create Plan';
+            modal.classList.remove('hidden');
+        }
+
+        function openEditModal(batch) {
+             if (!currentUserId) return showMessage('Please log in to edit plans.');
+            modalTitle.textContent = 'Edit Batch Plan';
+            batchIdInput.value = batch.id;
+            batchNumberInput.value = batch.batchNumber;
+            batchNumberInput.disabled = true; 
+            batchDateInput.value = batch.date;
+            batchShiftSelect.value = batch.shift;
+            modalSubmitBtn.textContent = 'Save Changes';
+            modal.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            modal.classList.add('hidden');
+            batchForm.reset();
+        }
+
+        // --- Event Listeners ---
+
+        document.addEventListener('click', (e) => {
+            if (!currentUserId) return;
+            
+            // Status update buttons
+            if (e.target.classList.contains('update-status-btn')) {
+                const batchId = e.target.getAttribute('data-batch-id');
+                const newStatus = e.target.getAttribute('data-status');
+                if (batchId && newStatus) {
+                    updateBatchStatus(batchId, newStatus);
+                }
+            }
+
+            // Edit button
+            if (e.target.closest('.edit-batch-btn')) {
+                const btn = e.target.closest('.edit-batch-btn');
+                const batchId = btn.getAttribute('data-batch-id');
+                getDoc(doc(db, BATCH_COLLECTION_PATH, batchId)).then(docSnap => {
+                    if (docSnap.exists()) {
+                        openEditModal({ id: docSnap.id, ...docSnap.data() });
+                    }
+                }).catch(err => console.error('Error fetching batch for edit:', err));
+            }
+        });
+
+        // Modal event listeners
+        addBatchBtn.addEventListener('click', openAddModal);
+        modalCloseBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+        batchForm.addEventListener('submit', handleBatchFormSubmit);
+        chatForm.addEventListener('submit', handleChatFormSubmit);
+        loginForm.addEventListener('submit', handleLoginSubmit);
+
+
+        // Start the application when the window loads
+        window.onload = initialize;
+    </script>
+</body>
+</html>
+
