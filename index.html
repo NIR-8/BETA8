@@ -30,17 +30,39 @@
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 font-sans transition-colors duration-300">
 
-    <div id="loading-overlay" class="fixed inset-0 bg-gray-100 dark:bg-gray-900 flex items-center justify-center z-50">
-        <div class="flex flex-col items-center">
+    <!-- Loading/Authentication Overlay -->
+    <div id="auth-overlay" class="fixed inset-0 bg-gray-100 dark:bg-gray-900 flex items-center justify-center z-50">
+        <div id="loading-spinner" class="flex flex-col items-center">
             <svg class="animate-spin h-12 w-12 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            <span class="mt-3 text-lg text-gray-700 dark:text-gray-300">Connecting to Real-time Services...</span>
+            <span class="mt-3 text-lg text-gray-700 dark:text-gray-300">Preparing services...</span>
+        </div>
+        
+        <!-- Login Form (Initially Hidden by JS, shown after services are prepared) -->
+        <div id="login-form-container" class="hidden bg-white dark:bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-sm">
+            <h2 class="text-2xl font-bold mb-6 text-gray-900 dark:text-white text-center">Login to Planner</h2>
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <label for="user-id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">User ID</label>
+                    <input type="text" id="user-id" value="TM232615" class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 p-3 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500" required>
+                </div>
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
+                    <input type="password" id="password" value="Nir8@1234" class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 p-3 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500" required>
+                </div>
+                <p id="login-error" class="text-sm text-red-500 hidden"></p>
+                <button type="submit" id="login-btn" class="w-full py-3 px-4 rounded-lg text-white font-semibold transition duration-150 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400">
+                    Sign In
+                </button>
+            </form>
+            <p class="text-xs text-gray-400 mt-4 text-center">Currently accepting: TM232615 / Nir8@1234</p>
         </div>
     </div>
 
-    <div id="app-container" class="max-w-7xl mx-auto p-4 md:p-8" style="display:none;">
+    <!-- Main Application Container -->
+    <div id="app-container" class="max-w-7xl mx-auto p-4 md:p-8 opacity-0 transition-opacity duration-500">
         
         <!-- Header -->
         <header class="mb-6 bg-white dark:bg-gray-800 rounded-xl shadow-xl p-4 md:p-6 flex flex-col md:flex-row justify-between items-start md:items-center">
@@ -52,7 +74,7 @@
                 </div>
             </div>
             <p class="text-sm mt-3 md:mt-0 text-gray-500 dark:text-gray-400">
-                Your ID: <span id="user-id-display" class="font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-lg text-xs">Loading...</span>
+                Logged in as: <span id="user-id-display" class="font-mono bg-green-100 dark:bg-green-800 px-2 py-1 rounded-lg text-xs font-semibold text-green-700 dark:text-green-200">...</span>
             </p>
         </header>
 
@@ -139,25 +161,21 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, updateDoc, onSnapshot, collection, query, orderBy, serverTimestamp, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Set Firebase logging level for debugging
-        setLogLevel('Debug');
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, updateDoc, onSnapshot, collection, query, orderBy, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Global Variables (Provided by Canvas Environment) ---
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-        // --- Firebase/Auth Instances ---
-        let app;
+        // --- Firebase/Auth Instances and State ---
         let db;
         let auth;
-        let userId = 'anonymous'; // Default until authenticated
+        let currentUserId = null; // This will hold the custom ID (e.g., 'TM232615')
 
         // --- Constants ---
+        const VALID_USER_ID = 'TM232615';
+        const VALID_PASSWORD = 'Nir8@1234';
         const STATUS_COLORS = {
             Scheduled: { bg: 'bg-orange-500', text: 'text-orange-500', border: 'border-orange-500' },
             Running: { bg: 'bg-blue-500', text: 'text-blue-500', border: 'border-blue-500' },
@@ -169,8 +187,18 @@
 
         // --- DOM Elements ---
         const $ = (selector) => document.querySelector(selector);
-        const $$ = (selector) => document.querySelectorAll(selector);
+        
+        const loadingSpinner = $('#loading-spinner');
+        const authOverlay = $('#auth-overlay');
+        const loginFormContainer = $('#login-form-container');
+        const loginForm = $('#login-form');
+        const loginBtn = $('#login-btn');
+        const loginError = $('#login-error');
+        const userIdInput = $('#user-id');
+        const passwordInput = $('#password');
 
+        const appContainer = $('#app-container');
+        const userIdDisplay = $('#user-id-display');
         const batchList = $('#batch-list');
         const chatMessages = $('#chat-messages');
         const chatForm = $('#chat-form');
@@ -186,29 +214,16 @@
         const batchShiftSelect = $('#batch-shift');
         const batchIdInput = $('#batch-id');
         const modalSubmitBtn = $('#modal-submit-btn');
-        const loadingOverlay = $('#loading-overlay');
-        const appContainer = $('#app-container');
 
         // --- Utility Functions ---
 
-        /**
-         * Converts a Firestore Timestamp to a formatted time string.
-         * @param {object} timestamp - Firestore Timestamp object.
-         * @returns {string} Formatted time string.
-         */
         const formatTimestamp = (timestamp) => {
             if (!timestamp) return '...';
-            // Firestore Timestamps have a toDate() method
             const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
             return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
         };
 
-        /**
-         * Shows a custom modal message instead of alert().
-         * @param {string} message - The message to display.
-         */
         const showMessage = (message) => {
-            // A simple temporary message box
             const msgBox = document.createElement('div');
             msgBox.className = 'fixed top-5 right-5 z-[100] p-4 bg-red-600 text-white rounded-lg shadow-xl animate-bounce';
             msgBox.textContent = message;
@@ -218,57 +233,74 @@
             }, 3000);
         };
 
-        /**
-         * Scrolls the chat window to the bottom.
-         */
         const scrollToBottom = () => {
             chatMessages.scrollTop = chatMessages.scrollHeight;
         };
 
-        // --- Core Application Logic ---
+        // --- Core Authentication and Initialization ---
 
         /**
-         * Initializes Firebase and authenticates the user.
+         * Initializes Firebase services and prepares the UI for login.
          */
         async function initialize() {
+            if (Object.keys(firebaseConfig).length === 0) {
+                console.error("Firebase config is missing.");
+                showMessage("Database configuration error.");
+                loadingSpinner.classList.add('hidden');
+                return;
+            }
+
             try {
-                app = initializeApp(firebaseConfig);
+                const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
+                
+                // Sign in anonymously immediately to satisfy Firestore security rules
+                // The actual user identity is managed by currentUserId locally
+                await signInAnonymously(auth); 
+                
+                // Hide loading, show login form
+                loadingSpinner.classList.add('hidden');
+                loginFormContainer.classList.remove('hidden');
 
-                // Wait for auth state change to determine userId
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        userId = user.uid;
-                    } else {
-                        // Attempt silent sign-in with custom token or anonymously
-                        const signIn = async () => {
-                            try {
-                                if (initialAuthToken) {
-                                    await signInWithCustomToken(auth, initialAuthToken);
-                                } else {
-                                    await signInAnonymously(auth);
-                                }
-                            } catch (error) {
-                                console.error('Firebase Auth Error:', error);
-                            }
-                        };
-                        signIn();
-                    }
-                    // Hide loading overlay once auth status is determined
-                    loadingOverlay.style.display = 'none';
-                    appContainer.style.display = 'block';
-                    $('#user-id-display').textContent = userId;
-                    // Start listeners after auth is ready
-                    startListeners();
-                });
             } catch (e) {
                 console.error("Firebase initialization failed:", e);
-                showMessage("Failed to connect to the database. Check console for details.");
-                loadingOverlay.style.display = 'none';
-                appContainer.style.display = 'block';
+                showMessage("Failed to connect to services.");
+                loadingSpinner.classList.add('hidden');
             }
         }
+        
+        /**
+         * Handles the custom login form submission.
+         */
+        async function handleLoginSubmit(e) {
+            e.preventDefault();
+            const id = userIdInput.value.trim();
+            const password = passwordInput.value.trim();
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Verifying...';
+            loginError.classList.add('hidden');
+
+            if (id === VALID_USER_ID && password === VALID_PASSWORD) {
+                // Login successful
+                currentUserId = id;
+                userIdDisplay.textContent = currentUserId;
+                authOverlay.style.display = 'none';
+                appContainer.style.opacity = 1;
+
+                // Start data listeners only after successful login
+                startListeners();
+            } else {
+                // Login failed
+                loginError.textContent = 'Invalid User ID or Password.';
+                loginError.classList.remove('hidden');
+            }
+
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Sign In';
+        }
+
 
         /**
          * Starts real-time listeners for batches and messages.
@@ -278,7 +310,6 @@
 
             // 1. Batch Schedule Listener
             const batchesRef = collection(db, BATCH_COLLECTION_PATH);
-            // NOTE: Sorting is done client-side to simplify query and avoid index errors
             onSnapshot(batchesRef, (snapshot) => {
                 const batchListRaw = snapshot.docs.map(doc => ({
                     id: doc.id,
@@ -312,14 +343,10 @@
             });
         }
 
-        // --- Rendering Functions ---
+        // --- Rendering Functions (Unchanged from previous version, adapted to use currentUserId) ---
 
-        /**
-         * Renders the list of batch plans.
-         * @param {Array<object>} batches - Array of batch objects.
-         */
         function renderBatches(batches) {
-            batchList.innerHTML = ''; // Clear previous content
+            batchList.innerHTML = ''; 
 
             if (batches.length === 0) {
                 batchList.innerHTML = `
@@ -334,10 +361,9 @@
                 const statusConfig = STATUS_COLORS[batch.status] || STATUS_COLORS['Scheduled'];
                 const item = document.createElement('div');
                 item.className = 'p-4 bg-white dark:bg-gray-700 rounded-xl shadow-lg flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-3 sm:space-y-0 border-l-4 transition hover:shadow-xl';
-                item.style.borderColor = statusConfig.border.replace('border-', '#').replace('-500', '00'); // Apply color to the border
+                item.style.borderColor = statusConfig.border.replace('border-', '#').replace('-500', '00'); 
 
                 item.innerHTML = `
-                    <!-- Batch Info -->
                     <div class="flex-1 min-w-0">
                         <div class="font-bold text-lg dark:text-white truncate">${batch.batchNumber}</div>
                         <div class="text-sm text-gray-500 dark:text-gray-300 flex items-center space-x-4 mt-1">
@@ -345,11 +371,10 @@
                             <span class="flex items-center"><i data-lucide="clock" class="h-4 w-4 mr-1"></i> Shift ${batch.shift}</span>
                         </div>
                         <div class="text-xs text-gray-400 dark:text-gray-400 mt-1">
-                            Modified by: ${batch.lastModifiedBy?.slice(0, 8) || 'N/A'}...
+                            Modified by: ${batch.lastModifiedBy || 'N/A'}
                         </div>
                     </div>
                     
-                    <!-- Status and Actions -->
                     <div class="flex flex-col items-start sm:items-end space-y-2 w-full sm:w-auto">
                         <div class="text-xs font-semibold px-3 py-1 rounded-full text-white ${statusConfig.bg}">
                             ${batch.status}
@@ -368,20 +393,15 @@
                     </div>
                 `;
                 batchList.appendChild(item);
-                // Re-create Lucide icons for the newly injected HTML
                 if (window.lucide) window.lucide.createIcons({ icons: window.lucide.icons });
             });
         }
 
-        /**
-         * Renders the list of chat messages.
-         * @param {Array<object>} messages - Array of message objects.
-         */
         function renderMessages(messages) {
-            chatMessages.innerHTML = ''; // Clear previous content
+            chatMessages.innerHTML = ''; 
             
             messages.forEach(msg => {
-                const isMine = msg.userId === userId;
+                const isMine = msg.userId === currentUserId;
                 const containerClass = isMine ? 'justify-end' : 'justify-start';
                 const bubbleClass = isMine
                     ? 'bg-blue-600 text-white rounded-br-none'
@@ -394,7 +414,7 @@
                 item.innerHTML = `
                     <div class="flex flex-col max-w-[80%] p-3 rounded-2xl shadow-md transition-transform duration-300 ease-in-out ${bubbleClass}">
                         <div class="font-semibold text-xs opacity-80 mb-1 ${isMine ? 'text-blue-200' : 'text-gray-500 dark:text-gray-300'}">
-                            ${isMine ? 'You' : `User ${msg.userId.slice(0, 8)}...`}
+                            ${isMine ? 'You' : `User ${msg.userId}`}
                         </div>
                         <p class="text-sm break-words">${msg.text}</p>
                         <div class="text-right mt-1 ${timeClass} text-xs">
@@ -409,18 +429,13 @@
 
         // --- Data Manipulation Functions ---
 
-        /**
-         * Updates the status of a specific batch.
-         * @param {string} batchId - The ID of the batch document.
-         * @param {string} newStatus - The new status ('Scheduled', 'Running', 'Dispensed').
-         */
         async function updateBatchStatus(batchId, newStatus) {
-            if (!db) return showMessage('Database not ready.');
+            if (!db || !currentUserId) return showMessage('Please log in first.');
             try {
                 const batchRef = doc(db, BATCH_COLLECTION_PATH, batchId);
                 await updateDoc(batchRef, {
                     status: newStatus,
-                    lastModifiedBy: userId,
+                    lastModifiedBy: currentUserId,
                     timestamp: serverTimestamp(),
                 });
             } catch (error) {
@@ -429,13 +444,9 @@
             }
         }
 
-        /**
-         * Handles the submission (add or edit) of a batch plan.
-         * @param {Event} e - The form submission event.
-         */
         async function handleBatchFormSubmit(e) {
             e.preventDefault();
-            if (!db) return showMessage('Database not ready.');
+            if (!db || !currentUserId) return showMessage('Please log in first.');
 
             const batchId = batchIdInput.value;
             const batchNumber = batchNumberInput.value.trim();
@@ -451,16 +462,14 @@
                     batchNumber: batchNumber,
                     date,
                     shift,
-                    lastModifiedBy: userId,
+                    lastModifiedBy: currentUserId,
                     timestamp: serverTimestamp(),
                 };
                 
                 if (isEditing) {
-                    // Editing existing batch
                     const docRef = doc(db, BATCH_COLLECTION_PATH, batchId);
                     await updateDoc(docRef, batchData);
                 } else {
-                    // Adding new batch. Check if batch number already exists.
                     const newDocRef = doc(db, BATCH_COLLECTION_PATH, batchNumber);
                     const docSnap = await getDoc(newDocRef);
                     
@@ -468,10 +477,8 @@
                          showMessage(`Batch number "${batchNumber}" already exists.`);
                          return;
                     }
-
-                    // Add initial status and createdBy only for new batches
                     batchData.status = 'Scheduled';
-                    batchData.createdBy = userId;
+                    batchData.createdBy = currentUserId;
                     await setDoc(newDocRef, batchData);
                 }
 
@@ -485,21 +492,17 @@
             }
         }
 
-        /**
-         * Sends a new chat message to Firestore.
-         * @param {Event} e - The form submission event.
-         */
         async function handleChatFormSubmit(e) {
             e.preventDefault();
             const messageText = chatInput.value.trim();
-            if (!messageText || !db) return;
+            if (!messageText || !db || !currentUserId) return;
 
             sendBtn.disabled = true;
             try {
                 const messagesRef = collection(db, MESSAGE_COLLECTION_PATH);
-                await setDoc(doc(messagesRef), { // Use setDoc on doc() without ID for an auto-generated ID
+                await setDoc(doc(messagesRef), {
                     text: messageText,
-                    userId,
+                    userId: currentUserId,
                     timestamp: serverTimestamp(),
                 });
                 chatInput.value = '';
@@ -513,10 +516,8 @@
 
         // --- Modal/UI Handlers ---
 
-        /**
-         * Opens the modal for adding a new batch.
-         */
         function openAddModal() {
+            if (!currentUserId) return showMessage('Please log in to add plans.');
             modalTitle.textContent = 'New Batch Plan';
             batchIdInput.value = '';
             batchNumberInput.value = '';
@@ -527,24 +528,18 @@
             modal.classList.remove('hidden');
         }
 
-        /**
-         * Opens the modal for editing an existing batch.
-         * @param {object} batch - The batch object to edit.
-         */
         function openEditModal(batch) {
+             if (!currentUserId) return showMessage('Please log in to edit plans.');
             modalTitle.textContent = 'Edit Batch Plan';
             batchIdInput.value = batch.id;
             batchNumberInput.value = batch.batchNumber;
-            batchNumberInput.disabled = true; // Cannot edit batch number after creation
+            batchNumberInput.disabled = true; 
             batchDateInput.value = batch.date;
             batchShiftSelect.value = batch.shift;
             modalSubmitBtn.textContent = 'Save Changes';
             modal.classList.remove('hidden');
         }
 
-        /**
-         * Closes the batch modal.
-         */
         function closeModal() {
             modal.classList.add('hidden');
             batchForm.reset();
@@ -553,6 +548,8 @@
         // --- Event Listeners ---
 
         document.addEventListener('click', (e) => {
+            if (!currentUserId) return;
+            
             // Status update buttons
             if (e.target.classList.contains('update-status-btn')) {
                 const batchId = e.target.getAttribute('data-batch-id');
@@ -566,8 +563,6 @@
             if (e.target.closest('.edit-batch-btn')) {
                 const btn = e.target.closest('.edit-batch-btn');
                 const batchId = btn.getAttribute('data-batch-id');
-                // Find the batch object in the currently rendered list (requires re-fetching or storing state, simpler to get it from Firestore directly if not using state)
-                // For simplicity here, we re-fetch the single document
                 getDoc(doc(db, BATCH_COLLECTION_PATH, batchId)).then(docSnap => {
                     if (docSnap.exists()) {
                         openEditModal({ id: docSnap.id, ...docSnap.data() });
@@ -580,15 +575,13 @@
         addBatchBtn.addEventListener('click', openAddModal);
         modalCloseBtn.addEventListener('click', closeModal);
         modal.addEventListener('click', (e) => {
-            // Close modal when clicking outside the content
             if (e.target === modal) {
                 closeModal();
             }
         });
         batchForm.addEventListener('submit', handleBatchFormSubmit);
-
-        // Chat event listener
         chatForm.addEventListener('submit', handleChatFormSubmit);
+        loginForm.addEventListener('submit', handleLoginSubmit);
 
 
         // Start the application when the window loads
