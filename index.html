@@ -3,370 +3,596 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Collaborative Planning Widget</title>
-    <!-- Tailwind CSS CDN -->
+    <title>Production Batch Planner</title>
+    <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Inter Font -->
+    <!-- Load Lucide Icons for a clean interface -->
+    <script type="module">
+        import { createIcons, icons } from 'https://cdn.jsdelivr.net/npm/lucide@latest/dist/esm/lucide.js';
+        document.addEventListener('DOMContentLoaded', () => {
+            createIcons({ icons });
+        });
+    </script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            margin: 0;
-            padding: 0;
-            /* Using a dark background color based on your screenshot for consistency */
-            background-color: #1a1a1a; 
-        }
-        /* Custom scrollbar for chat window */
-        #chat-feed::-webkit-scrollbar {
+        /* Custom scrollbar for better appearance */
+        .custom-scrollbar::-webkit-scrollbar {
             width: 8px;
         }
-        #chat-feed::-webkit-scrollbar-thumb {
-            background-color: #4b5563; 
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: rgba(156, 163, 175, 0.5); /* gray-400 */
             border-radius: 4px;
         }
-        #chat-feed::-webkit-scrollbar-track {
-            background: #374151;
-        }
-        /* Ensure the modal appears over everything */
-        #chat-modal {
-            z-index: 9999;
+        .custom-scrollbar {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
         }
     </style>
 </head>
-<body>
+<body class="bg-gray-50 dark:bg-gray-900 font-sans transition-colors duration-300">
 
-    <!-- Main Chat Container (Modal) -->
-    <div id="chat-modal" class="fixed inset-0 z-50 hidden md:flex items-end justify-end p-4 md:p-8" onclick="closeModalOutside(event)">
-        <!-- Inner Chat Box -->
-        <div id="chat-box" class="bg-gray-800 rounded-xl shadow-2xl flex flex-col w-full max-w-sm h-[85vh] md:h-[600px] transform transition-all duration-300 ease-out scale-95 opacity-0 text-white">
-            <!-- Header -->
-            <div class="p-4 border-b border-gray-700 bg-orange-700 text-white rounded-t-xl flex justify-between items-center">
-                <h2 class="text-xl font-bold">Collaborative Planning</h2>
-                <button onclick="toggleModal()" class="text-white hover:text-gray-200 p-1 rounded-full hover:bg-orange-800 transition duration-150">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
-            </div>
-
-            <!-- User Info (for tracking collaborators) -->
-            <div class="px-4 py-2 bg-gray-700 text-sm flex justify-between">
-                <span>Your ID: <strong id="user-id-display" class="text-orange-300">Loading...</strong></span>
-                <span id="auth-status-display" class="font-medium text-xs text-orange-400">Connecting...</span>
-            </div>
-
-            <!-- Chat Feed (Messages/Planning Items) -->
-            <div id="chat-feed" class="flex-grow p-4 space-y-4 overflow-y-auto bg-gray-900">
-                <div id="loading-indicator" class="text-center p-8 text-gray-400">
-                    Loading messages...
-                </div>
-            </div>
-
-            <!-- Input Area -->
-            <div class="p-4 border-t border-gray-700 bg-gray-800">
-                <div class="flex items-center space-x-2">
-                    <!-- Planning / Add Button -->
-                    <button id="add-planning-btn" onclick="showPlanningInput()" class="bg-green-600 hover:bg-green-700 text-white p-3 rounded-full shadow-lg transition duration-150 transform hover:scale-105" title="Start a New Planning Task">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-                    </button>
-
-                    <!-- Text Input -->
-                    <input type="text" id="message-input" placeholder="Type a message or planning detail..."
-                        class="flex-grow p-3 border border-gray-600 rounded-full focus:ring-orange-500 focus:border-orange-500 transition duration-150 bg-gray-700 text-white placeholder-gray-400">
-                    
-                    <!-- Image Upload Button -->
-                    <button onclick="document.getElementById('image-upload').click()" class="bg-gray-600 hover:bg-gray-500 text-white p-3 rounded-full transition duration-150" title="Upload Image">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                    </button>
-                    <input type="file" id="image-upload" accept="image/*" class="hidden" onchange="uploadImage(event)">
-                    
-                    <!-- Send Button -->
-                    <button id="send-btn" onclick="sendMessage()" class="bg-orange-600 hover:bg-orange-700 text-white p-3 rounded-full transition duration-150" title="Send Message">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
-                    </button>
-                </div>
-            </div>
+    <div id="loading-overlay" class="fixed inset-0 bg-gray-100 dark:bg-gray-900 flex items-center justify-center z-50">
+        <div class="flex flex-col items-center">
+            <svg class="animate-spin h-12 w-12 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span class="mt-3 text-lg text-gray-700 dark:text-gray-300">Connecting to Real-time Services...</span>
         </div>
     </div>
 
-    <!-- Floating Chat Logo/Button -->
-    <button id="chat-icon" onclick="toggleModal()" class="fixed bottom-6 right-6 z-[10000] bg-orange-700 text-white p-4 rounded-full shadow-xl hover:bg-orange-800 transition duration-300 transform hover:scale-105">
-        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h.01M16 11h.01M7 15h10a1 1 0 011 1v4a1 1 0 01-1 1H7a1 1 0 01-1-1v-4a1 1 0 011-1z"></path></svg>
-    </button>
-    
-    <!-- Firebase Libraries and Script Logic -->
+    <div id="app-container" class="max-w-7xl mx-auto p-4 md:p-8" style="display:none;">
+        
+        <!-- Header -->
+        <header class="mb-6 bg-white dark:bg-gray-800 rounded-xl shadow-xl p-4 md:p-6 flex flex-col md:flex-row justify-between items-start md:items-center">
+            <div class="flex items-center">
+                <i data-lucide="truck" class="h-8 w-8 text-blue-600 mr-3"></i>
+                <div>
+                    <h1 class="text-3xl font-extrabold text-gray-900 dark:text-white">Batch Planning & Collaboration</h1>
+                    <p class="text-sm mt-1 text-gray-500 dark:text-gray-400">Real-time scheduling and communication tool.</p>
+                </div>
+            </div>
+            <p class="text-sm mt-3 md:mt-0 text-gray-500 dark:text-gray-400">
+                Your ID: <span id="user-id-display" class="font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-lg text-xs">Loading...</span>
+            </p>
+        </header>
+
+        <!-- Main Content Wrapper -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full min-h-[70vh]">
+            
+            <!-- Left Column: Batch Planner (2/3 width on Desktop) -->
+            <div class="lg:col-span-2 flex flex-col h-full">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-200 flex items-center">
+                        <i data-lucide="calendar" class="h-5 w-5 mr-2"></i> Production Schedule
+                    </h2>
+                    <button id="add-batch-btn" class="py-2 px-4 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow-md transition duration-200 flex items-center">
+                        <i data-lucide="plus" class="h-5 w-5 mr-1"></i> Add Batch
+                    </button>
+                </div>
+                
+                <!-- Batch List Container -->
+                <div id="batch-list" class="flex-1 overflow-y-auto space-y-3 p-2 bg-white dark:bg-gray-800 rounded-xl shadow-lg custom-scrollbar">
+                    <!-- Batches will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Right Column: Live Chat (1/3 width on Desktop) -->
+            <div class="lg:col-span-1 flex flex-col h-[70vh] lg:h-full">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800 dark:text-gray-200 flex items-center">
+                    <i data-lucide="messages-square" class="h-5 w-5 mr-2"></i> Live Chat
+                </h2>
+                <div class="flex-1 flex flex-col bg-white dark:bg-gray-800 rounded-xl shadow-lg">
+                    <!-- Messages Display -->
+                    <div id="chat-messages" class="flex-1 overflow-y-auto space-y-4 p-4 custom-scrollbar">
+                        <!-- Messages will be inserted here -->
+                    </div>
+
+                    <!-- Chat Input -->
+                    <form id="chat-form" class="p-3 border-t border-gray-200 dark:border-gray-700 flex">
+                        <input type="text" id="chat-input" placeholder="Type a message..." class="flex-1 rounded-l-full border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 p-3 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                        <button type="submit" id="send-btn" class="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-r-full flex items-center justify-center transition duration-150 disabled:bg-gray-400">
+                            <i data-lucide="send" class="h-5 w-5"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Batch Modal for Add/Edit -->
+    <div id="batch-modal" class="hidden fixed inset-0 z-50 bg-gray-900 bg-opacity-70 flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md shadow-2xl transform transition-all">
+            <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 id="modal-title" class="text-xl font-bold text-gray-900 dark:text-white">New Batch Plan</h2>
+                <button id="modal-close-btn" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                    <i data-lucide="x" class="h-6 w-6"></i>
+                </button>
+            </div>
+            <form id="batch-form" class="p-6 space-y-4">
+                <input type="hidden" id="batch-id">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Batch Number (Unique ID)</label>
+                    <input type="text" id="batch-number" class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 p-3 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., BATCH-123" required>
+                </div>
+                <div class="flex space-x-4">
+                    <div class="w-1/2">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
+                        <input type="date" id="batch-date" class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 p-3 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500" required>
+                    </div>
+                    <div class="w-1/2">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Shift</label>
+                        <select id="batch-shift" class="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 p-3 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500" required>
+                            <option value="A">A</option>
+                            <option value="B">B</option>
+                            <option value="C">C</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" id="modal-submit-btn" class="w-full py-3 px-4 rounded-lg text-white font-semibold transition duration-150 bg-blue-600 hover:bg-blue-700">
+                    Save Plan
+                </button>
+            </form>
+        </div>
+    </div>
+
+
     <script type="module">
-        // Import only necessary functions: initializeApp, Auth, and Firestore
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, addDoc, updateDoc, onSnapshot, collection, query, orderBy, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, updateDoc, onSnapshot, collection, query, orderBy, serverTimestamp, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // VVVVVVVV  PASTED FIREBASE CONFIGURATION  VVVVVVVV
-        const firebaseConfig = {
-            apiKey: "AIzaSyAfGzkSg6U49-wXy-mvMd2OdqJ3qHo5Ouk",
-            authDomain: "beta8-434f9.firebaseapp.com",
-            projectId: "beta8-434f9",
-            storageBucket: "beta8-434f9.firebasestorage.app",
-            messagingSenderId: "948269597618",
-            appId: "1:948269597618:web:134ea662b3085db5a01aab",
-            measurementId: "G-1VG5P6XSGQ"
-        };
-        
-        // This is a custom identifier for your app's data in Firestore path.
-        const customAppId = 'nir8-beta-chat-v1'; 
-        
-        // ^^^^^^^^  END OF FIREBASE CONFIGURATION  ^^^^^^^^
+        // Set Firebase logging level for debugging
+        setLogLevel('Debug');
 
+        // --- Global Variables (Provided by Canvas Environment) ---
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        // --- Firebase/Auth Instances ---
         let app;
         let db;
         let auth;
-        let userId = 'anonymous';
-        let isAuthReady = false;
-        const appId = customAppId; 
+        let userId = 'anonymous'; // Default until authenticated
 
-        // --- CORE FIREBASE INITIALIZATION & AUTH ---
+        // --- Constants ---
+        const STATUS_COLORS = {
+            Scheduled: { bg: 'bg-orange-500', text: 'text-orange-500', border: 'border-orange-500' },
+            Running: { bg: 'bg-blue-500', text: 'text-blue-500', border: 'border-blue-500' },
+            Dispensed: { bg: 'bg-green-500', text: 'text-green-500', border: 'border-green-500' },
+        };
+        const SHIFTS = ['A', 'B', 'C'];
+        const BATCH_COLLECTION_PATH = `artifacts/${appId}/public/data/batches`;
+        const MESSAGE_COLLECTION_PATH = `artifacts/${appId}/public/data/messages`;
 
-        try {
-            // Set Firebase log level for debugging
-            setLogLevel('Debug');
-            
-            app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-            
-            // This listener handles the sign-in process
-            onAuthStateChanged(auth, async (user) => {
-                const authStatusDisplay = document.getElementById('auth-status-display');
-                if (user) {
-                    userId = user.uid;
-                    authStatusDisplay.textContent = 'Connected';
-                    authStatusDisplay.classList.remove('text-orange-400', 'text-red-600');
-                    authStatusDisplay.classList.add('text-green-400');
-                } else {
-                    // Sign in anonymously 
-                    await signInAnonymously(auth);
-                }
+        // --- DOM Elements ---
+        const $ = (selector) => document.querySelector(selector);
+        const $$ = (selector) => document.querySelectorAll(selector);
 
-                // Update UI and start listening for data after auth is resolved
-                document.getElementById('user-id-display').textContent = userId.substring(0, 8); 
-                isAuthReady = true;
-                if (db) {
-                    listenForData();
-                }
-            });
+        const batchList = $('#batch-list');
+        const chatMessages = $('#chat-messages');
+        const chatForm = $('#chat-form');
+        const chatInput = $('#chat-input');
+        const sendBtn = $('#send-btn');
+        const addBatchBtn = $('#add-batch-btn');
+        const modal = $('#batch-modal');
+        const modalTitle = $('#modal-title');
+        const modalCloseBtn = $('#modal-close-btn');
+        const batchForm = $('#batch-form');
+        const batchNumberInput = $('#batch-number');
+        const batchDateInput = $('#batch-date');
+        const batchShiftSelect = $('#batch-shift');
+        const batchIdInput = $('#batch-id');
+        const modalSubmitBtn = $('#modal-submit-btn');
+        const loadingOverlay = $('#loading-overlay');
+        const appContainer = $('#app-container');
 
-        } catch (error) {
-            console.error("Firebase initialization failed:", error);
-            document.getElementById('auth-status-display').textContent = 'Error: Check console';
-            document.getElementById('auth-status-display').classList.remove('text-orange-400');
-            document.getElementById('auth-status-display').classList.add('text-red-600');
-        }
+        // --- Utility Functions ---
 
-        // --- UTILITY FUNCTIONS ---
+        /**
+         * Converts a Firestore Timestamp to a formatted time string.
+         * @param {object} timestamp - Firestore Timestamp object.
+         * @returns {string} Formatted time string.
+         */
+        const formatTimestamp = (timestamp) => {
+            if (!timestamp) return '...';
+            // Firestore Timestamps have a toDate() method
+            const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+            return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        };
 
-        function generateUserName(id) {
-            return 'User-' + id.substring(0, 4);
-        }
+        /**
+         * Shows a custom modal message instead of alert().
+         * @param {string} message - The message to display.
+         */
+        const showMessage = (message) => {
+            // A simple temporary message box
+            const msgBox = document.createElement('div');
+            msgBox.className = 'fixed top-5 right-5 z-[100] p-4 bg-red-600 text-white rounded-lg shadow-xl animate-bounce';
+            msgBox.textContent = message;
+            document.body.appendChild(msgBox);
+            setTimeout(() => {
+                msgBox.remove();
+            }, 3000);
+        };
 
-        // --- UI TOGGLES ---
+        /**
+         * Scrolls the chat window to the bottom.
+         */
+        const scrollToBottom = () => {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        };
 
-        window.toggleModal = function() {
-            const modal = document.getElementById('chat-modal');
-            const box = document.getElementById('chat-box');
-            const isHidden = modal.classList.contains('hidden');
+        // --- Core Application Logic ---
 
-            if (isHidden) {
-                modal.classList.remove('hidden');
-                setTimeout(() => {
-                    box.classList.remove('scale-95', 'opacity-0');
-                    box.classList.add('scale-100', 'opacity-100');
-                    const feed = document.getElementById('chat-feed');
-                    feed.scrollTop = feed.scrollHeight;
-                }, 10); 
-            } else {
-                box.classList.remove('scale-100', 'opacity-100');
-                box.classList.add('scale-95', 'opacity-0');
-                setTimeout(() => {
-                    modal.classList.add('hidden');
-                }, 300);
-            }
-        }
-
-        window.closeModalOutside = function(event) {
-            if (event.target === document.getElementById('chat-modal')) {
-                toggleModal();
-            }
-        }
-
-        window.showPlanningInput = function() {
-            const input = document.getElementById('message-input');
-            input.dataset.mode = 'planning';
-            input.placeholder = "Enter planning task details...";
-            input.classList.remove('border-gray-600', 'focus:border-orange-500');
-            input.classList.add('border-green-500', 'focus:border-green-500');
-        }
-
-        function resetInputMode() {
-            const input = document.getElementById('message-input');
-            input.dataset.mode = 'text';
-            input.placeholder = "Type a message or planning detail...";
-            input.classList.remove('border-green-500', 'focus:border-green-500');
-            input.classList.add('border-gray-600', 'focus:border-orange-500');
-        }
-
-        // --- FIRESTORE DATA FUNCTIONS ---
-
-        function getCollectionRef() {
-            // Public path for collaborative data: /artifacts/{appId}/public/data/planning_chat
-            return collection(db, `artifacts/${appId}/public/data/planning_chat`);
-        }
-
-        window.sendMessage = async function() {
-            const input = document.getElementById('message-input');
-            const content = input.value.trim();
-            const mode = input.dataset.mode || 'text';
-
-            if (!content || !isAuthReady) return;
-
-            const message = {
-                content: content,
-                userId: userId,
-                userName: generateUserName(userId),
-                timestamp: Date.now(),
-            };
-
-            if (mode === 'planning') {
-                message.type = 'planning';
-                message.isCompleted = false; // Default orange status
-            } else {
-                message.type = 'text';
-            }
-
+        /**
+         * Initializes Firebase and authenticates the user.
+         */
+        async function initialize() {
             try {
-                await addDoc(getCollectionRef(), message);
-                input.value = ''; // Clear input
-                resetInputMode();
-            } catch (e) {
-                console.error("Error sending message: ", e);
-            }
-        }
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
 
-        window.uploadImage = async function(event) {
-            const file = event.target.files[0];
-            if (!file || !isAuthReady) return;
-
-            // Using a simple placeholder URL for demo purposes.
-            const tempImageUrl = `https://placehold.co/300x200/5e8d98/FFFFFF?text=Image+by+${generateUserName(userId)}`;
-            
-            const message = {
-                type: 'image',
-                content: tempImageUrl,
-                userId: userId,
-                userName: generateUserName(userId),
-                timestamp: Date.now(),
-            };
-
-            try {
-                await addDoc(getCollectionRef(), message);
-                event.target.value = ''; // Clear file input
-            } catch (e) {
-                console.error("Error posting image: ", e);
-            }
-        }
-
-        window.toggleCompletion = async function(docId, currentStatus) {
-            if (!isAuthReady) return;
-            const docRef = doc(db, getCollectionRef().path, docId);
-            try {
-                await updateDoc(docRef, {
-                    isCompleted: !currentStatus
+                // Wait for auth state change to determine userId
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                    } else {
+                        // Attempt silent sign-in with custom token or anonymously
+                        const signIn = async () => {
+                            try {
+                                if (initialAuthToken) {
+                                    await signInWithCustomToken(auth, initialAuthToken);
+                                } else {
+                                    await signInAnonymously(auth);
+                                }
+                            } catch (error) {
+                                console.error('Firebase Auth Error:', error);
+                            }
+                        };
+                        signIn();
+                    }
+                    // Hide loading overlay once auth status is determined
+                    loadingOverlay.style.display = 'none';
+                    appContainer.style.display = 'block';
+                    $('#user-id-display').textContent = userId;
+                    // Start listeners after auth is ready
+                    startListeners();
                 });
             } catch (e) {
-                console.error("Error updating status: ", e);
+                console.error("Firebase initialization failed:", e);
+                showMessage("Failed to connect to the database. Check console for details.");
+                loadingOverlay.style.display = 'none';
+                appContainer.style.display = 'block';
             }
         }
 
-        // --- REAL-TIME DATA LISTENER & RENDERING ---
+        /**
+         * Starts real-time listeners for batches and messages.
+         */
+        function startListeners() {
+            if (!db) return;
 
-        function listenForData() {
-            const q = query(getCollectionRef(), orderBy("timestamp", "asc"));
-            
-            onSnapshot(q, (snapshot) => {
-                const feedElement = document.getElementById('chat-feed');
-                feedElement.innerHTML = ''; 
-                document.getElementById('loading-indicator').style.display = 'none';
-                
-                snapshot.forEach((doc) => {
-                    const data = doc.data();
-                    const docId = doc.id;
-                    feedElement.appendChild(renderMessage(data, docId));
+            // 1. Batch Schedule Listener
+            const batchesRef = collection(db, BATCH_COLLECTION_PATH);
+            // NOTE: Sorting is done client-side to simplify query and avoid index errors
+            onSnapshot(batchesRef, (snapshot) => {
+                const batchListRaw = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                // Client-side sorting by date (oldest first)
+                batchListRaw.sort((a, b) => {
+                    if (!a.date || !b.date) return 0;
+                    return new Date(a.date) - new Date(b.date);
                 });
-
-                const feed = document.getElementById('chat-feed');
-                feed.scrollTop = feed.scrollHeight;
+                renderBatches(batchListRaw);
             }, (error) => {
-                console.error("Error listening to Firestore:", error);
-                document.getElementById('loading-indicator').textContent = 'Error loading messages.';
+                console.error('Error fetching batches:', error);
+                showMessage('Could not load batch data.');
+            });
+
+            // 2. Chat Messages Listener
+            const messagesRef = collection(db, MESSAGE_COLLECTION_PATH);
+            const q = query(messagesRef, orderBy('timestamp', 'asc'));
+
+            onSnapshot(q, (snapshot) => {
+                const messageListRaw = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                renderMessages(messageListRaw);
+                scrollToBottom();
+            }, (error) => {
+                console.error('Error fetching messages:', error);
+                showMessage('Could not load chat messages.');
             });
         }
 
-        function renderMessage(data, docId) {
-            const messageEl = document.createElement('div');
-            messageEl.className = 'w-full flex';
-            const isCurrentUser = data.userId === userId;
-            
-            const bubbleClasses = isCurrentUser 
-                ? 'bg-orange-600 text-white self-end rounded-br-none' 
-                : 'bg-gray-700 text-gray-100 self-start rounded-tl-none';
-            const alignmentClass = isCurrentUser ? 'justify-end' : 'justify-start';
+        // --- Rendering Functions ---
 
-            if (data.type === 'planning') {
-                // --- PLANNING TASK RENDER ---
-                const statusClasses = data.isCompleted 
-                    ? 'bg-green-800 border-green-500 text-green-200' 
-                    : 'bg-orange-800 border-orange-500 text-orange-200';
+        /**
+         * Renders the list of batch plans.
+         * @param {Array<object>} batches - Array of batch objects.
+         */
+        function renderBatches(batches) {
+            batchList.innerHTML = ''; // Clear previous content
 
-                messageEl.className = `w-full flex ${alignmentClass}`;
-                messageEl.innerHTML = `
-                    <div class="planning-card w-full max-w-sm p-3 border-l-4 ${statusClasses} rounded-xl shadow-md transition duration-300 ease-in-out hover:shadow-lg cursor-pointer"
-                        onclick="toggleCompletion('${docId}', ${data.isCompleted})">
-                        <div class="flex justify-between items-center mb-1">
-                            <span class="text-xs font-semibold uppercase tracking-wider">
-                                ${data.isCompleted ? '✅ Completed' : '⏳ Pending'}
-                            </span>
-                            <span class="text-xs text-gray-400">${data.userName}</span>
-                        </div>
-                        <p class="text-base font-medium">${data.content}</p>
-                        <span class="text-xs text-gray-500 mt-1 block">${new Date(data.timestamp).toLocaleTimeString()}</span>
+            if (batches.length === 0) {
+                batchList.innerHTML = `
+                    <div class="text-center text-gray-500 dark:text-gray-400 p-10 bg-white dark:bg-gray-800 rounded-xl">
+                        No batches scheduled yet. Click the 'Add Batch' button!
                     </div>
                 `;
-
-            } else if (data.type === 'image') {
-                 // --- IMAGE MESSAGE RENDER ---
-                messageEl.className = `w-full flex ${alignmentClass}`;
-                messageEl.innerHTML = `
-                    <div class="max-w-xs p-2 rounded-xl shadow-md ${bubbleClasses} transition duration-150">
-                        <img src="${data.content}" alt="User uploaded image" class="rounded-lg w-full h-auto object-cover border-4 border-white shadow-inner">
-                        <span class="text-xs ${isCurrentUser ? 'text-gray-200' : 'text-gray-300'} block mt-1">
-                            Posted by ${data.userName} at ${new Date(data.timestamp).toLocaleTimeString()}
-                        </span>
-                    </div>
-                `;
-
-            } else {
-                // --- TEXT MESSAGE RENDER ---
-                messageEl.className = `w-full flex ${alignmentClass}`;
-                messageEl.innerHTML = `
-                    <div class="max-w-xs p-3 rounded-xl shadow-md ${bubbleClasses} transition duration-150">
-                        <p class="text-sm break-words">${data.content}</p>
-                        <div class="text-right text-xs mt-1 ${isCurrentUser ? 'text-gray-200' : 'text-gray-400'}">
-                            ${data.userName} - ${new Date(data.timestamp).toLocaleTimeString()}
-                        </div>
-                    </div>
-                `;
+                return;
             }
-            
-            return messageEl;
+
+            batches.forEach(batch => {
+                const statusConfig = STATUS_COLORS[batch.status] || STATUS_COLORS['Scheduled'];
+                const item = document.createElement('div');
+                item.className = 'p-4 bg-white dark:bg-gray-700 rounded-xl shadow-lg flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-3 sm:space-y-0 border-l-4 transition hover:shadow-xl';
+                item.style.borderColor = statusConfig.border.replace('border-', '#').replace('-500', '00'); // Apply color to the border
+
+                item.innerHTML = `
+                    <!-- Batch Info -->
+                    <div class="flex-1 min-w-0">
+                        <div class="font-bold text-lg dark:text-white truncate">${batch.batchNumber}</div>
+                        <div class="text-sm text-gray-500 dark:text-gray-300 flex items-center space-x-4 mt-1">
+                            <span class="flex items-center"><i data-lucide="calendar" class="h-4 w-4 mr-1"></i> ${batch.date}</span>
+                            <span class="flex items-center"><i data-lucide="clock" class="h-4 w-4 mr-1"></i> Shift ${batch.shift}</span>
+                        </div>
+                        <div class="text-xs text-gray-400 dark:text-gray-400 mt-1">
+                            Modified by: ${batch.lastModifiedBy?.slice(0, 8) || 'N/A'}...
+                        </div>
+                    </div>
+                    
+                    <!-- Status and Actions -->
+                    <div class="flex flex-col items-start sm:items-end space-y-2 w-full sm:w-auto">
+                        <div class="text-xs font-semibold px-3 py-1 rounded-full text-white ${statusConfig.bg}">
+                            ${batch.status}
+                        </div>
+                        
+                        <div class="flex space-x-2 flex-wrap gap-y-1">
+                            ${Object.keys(STATUS_COLORS).filter(s => s !== batch.status).map(status => `
+                                <button data-batch-id="${batch.id}" data-status="${status}" class="update-status-btn text-xs font-medium px-2 py-1 rounded-lg transition duration-150 ${STATUS_COLORS[status].bg} hover:opacity-80 text-white">
+                                    ${status}
+                                </button>
+                            `).join('')}
+                            <button data-batch-id="${batch.id}" class="edit-batch-btn text-xs font-medium px-2 py-1 rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 transition duration-150">
+                                <i data-lucide="edit" class="h-4 w-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                batchList.appendChild(item);
+                // Re-create Lucide icons for the newly injected HTML
+                if (window.lucide) window.lucide.createIcons({ icons: window.lucide.icons });
+            });
         }
 
+        /**
+         * Renders the list of chat messages.
+         * @param {Array<object>} messages - Array of message objects.
+         */
+        function renderMessages(messages) {
+            chatMessages.innerHTML = ''; // Clear previous content
+            
+            messages.forEach(msg => {
+                const isMine = msg.userId === userId;
+                const containerClass = isMine ? 'justify-end' : 'justify-start';
+                const bubbleClass = isMine
+                    ? 'bg-blue-600 text-white rounded-br-none'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-tl-none';
+                const timeClass = isMine ? 'text-blue-100' : 'text-gray-400 dark:text-gray-400';
+
+                const item = document.createElement('div');
+                item.className = `flex ${containerClass}`;
+                
+                item.innerHTML = `
+                    <div class="flex flex-col max-w-[80%] p-3 rounded-2xl shadow-md transition-transform duration-300 ease-in-out ${bubbleClass}">
+                        <div class="font-semibold text-xs opacity-80 mb-1 ${isMine ? 'text-blue-200' : 'text-gray-500 dark:text-gray-300'}">
+                            ${isMine ? 'You' : `User ${msg.userId.slice(0, 8)}...`}
+                        </div>
+                        <p class="text-sm break-words">${msg.text}</p>
+                        <div class="text-right mt-1 ${timeClass} text-xs">
+                            ${formatTimestamp(msg.timestamp)}
+                        </div>
+                    </div>
+                `;
+                chatMessages.appendChild(item);
+            });
+            scrollToBottom();
+        }
+
+        // --- Data Manipulation Functions ---
+
+        /**
+         * Updates the status of a specific batch.
+         * @param {string} batchId - The ID of the batch document.
+         * @param {string} newStatus - The new status ('Scheduled', 'Running', 'Dispensed').
+         */
+        async function updateBatchStatus(batchId, newStatus) {
+            if (!db) return showMessage('Database not ready.');
+            try {
+                const batchRef = doc(db, BATCH_COLLECTION_PATH, batchId);
+                await updateDoc(batchRef, {
+                    status: newStatus,
+                    lastModifiedBy: userId,
+                    timestamp: serverTimestamp(),
+                });
+            } catch (error) {
+                console.error('Error updating status:', error);
+                showMessage('Failed to update batch status.');
+            }
+        }
+
+        /**
+         * Handles the submission (add or edit) of a batch plan.
+         * @param {Event} e - The form submission event.
+         */
+        async function handleBatchFormSubmit(e) {
+            e.preventDefault();
+            if (!db) return showMessage('Database not ready.');
+
+            const batchId = batchIdInput.value;
+            const batchNumber = batchNumberInput.value.trim();
+            const date = batchDateInput.value;
+            const shift = batchShiftSelect.value;
+            const isEditing = !!batchId;
+
+            modalSubmitBtn.disabled = true;
+            modalSubmitBtn.textContent = isEditing ? 'Saving...' : 'Creating...';
+            
+            try {
+                const batchData = {
+                    batchNumber: batchNumber,
+                    date,
+                    shift,
+                    lastModifiedBy: userId,
+                    timestamp: serverTimestamp(),
+                };
+                
+                if (isEditing) {
+                    // Editing existing batch
+                    const docRef = doc(db, BATCH_COLLECTION_PATH, batchId);
+                    await updateDoc(docRef, batchData);
+                } else {
+                    // Adding new batch. Check if batch number already exists.
+                    const newDocRef = doc(db, BATCH_COLLECTION_PATH, batchNumber);
+                    const docSnap = await getDoc(newDocRef);
+                    
+                    if (docSnap.exists()) {
+                         showMessage(`Batch number "${batchNumber}" already exists.`);
+                         return;
+                    }
+
+                    // Add initial status and createdBy only for new batches
+                    batchData.status = 'Scheduled';
+                    batchData.createdBy = userId;
+                    await setDoc(newDocRef, batchData);
+                }
+
+                closeModal();
+            } catch (error) {
+                console.error('Error saving batch:', error);
+                showMessage(`Failed to save batch: ${error.message}`);
+            } finally {
+                modalSubmitBtn.disabled = false;
+                modalSubmitBtn.textContent = isEditing ? 'Save Changes' : 'Create Plan';
+            }
+        }
+
+        /**
+         * Sends a new chat message to Firestore.
+         * @param {Event} e - The form submission event.
+         */
+        async function handleChatFormSubmit(e) {
+            e.preventDefault();
+            const messageText = chatInput.value.trim();
+            if (!messageText || !db) return;
+
+            sendBtn.disabled = true;
+            try {
+                const messagesRef = collection(db, MESSAGE_COLLECTION_PATH);
+                await setDoc(doc(messagesRef), { // Use setDoc on doc() without ID for an auto-generated ID
+                    text: messageText,
+                    userId,
+                    timestamp: serverTimestamp(),
+                });
+                chatInput.value = '';
+            } catch (error) {
+                console.error('Error sending message:', error);
+                showMessage('Failed to send message.');
+            } finally {
+                sendBtn.disabled = false;
+            }
+        }
+
+        // --- Modal/UI Handlers ---
+
+        /**
+         * Opens the modal for adding a new batch.
+         */
+        function openAddModal() {
+            modalTitle.textContent = 'New Batch Plan';
+            batchIdInput.value = '';
+            batchNumberInput.value = '';
+            batchNumberInput.disabled = false;
+            batchDateInput.value = new Date().toISOString().split('T')[0];
+            batchShiftSelect.value = SHIFTS[0];
+            modalSubmitBtn.textContent = 'Create Plan';
+            modal.classList.remove('hidden');
+        }
+
+        /**
+         * Opens the modal for editing an existing batch.
+         * @param {object} batch - The batch object to edit.
+         */
+        function openEditModal(batch) {
+            modalTitle.textContent = 'Edit Batch Plan';
+            batchIdInput.value = batch.id;
+            batchNumberInput.value = batch.batchNumber;
+            batchNumberInput.disabled = true; // Cannot edit batch number after creation
+            batchDateInput.value = batch.date;
+            batchShiftSelect.value = batch.shift;
+            modalSubmitBtn.textContent = 'Save Changes';
+            modal.classList.remove('hidden');
+        }
+
+        /**
+         * Closes the batch modal.
+         */
+        function closeModal() {
+            modal.classList.add('hidden');
+            batchForm.reset();
+        }
+
+        // --- Event Listeners ---
+
+        document.addEventListener('click', (e) => {
+            // Status update buttons
+            if (e.target.classList.contains('update-status-btn')) {
+                const batchId = e.target.getAttribute('data-batch-id');
+                const newStatus = e.target.getAttribute('data-status');
+                if (batchId && newStatus) {
+                    updateBatchStatus(batchId, newStatus);
+                }
+            }
+
+            // Edit button
+            if (e.target.closest('.edit-batch-btn')) {
+                const btn = e.target.closest('.edit-batch-btn');
+                const batchId = btn.getAttribute('data-batch-id');
+                // Find the batch object in the currently rendered list (requires re-fetching or storing state, simpler to get it from Firestore directly if not using state)
+                // For simplicity here, we re-fetch the single document
+                getDoc(doc(db, BATCH_COLLECTION_PATH, batchId)).then(docSnap => {
+                    if (docSnap.exists()) {
+                        openEditModal({ id: docSnap.id, ...docSnap.data() });
+                    }
+                }).catch(err => console.error('Error fetching batch for edit:', err));
+            }
+        });
+
+        // Modal event listeners
+        addBatchBtn.addEventListener('click', openAddModal);
+        modalCloseBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            // Close modal when clicking outside the content
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+        batchForm.addEventListener('submit', handleBatchFormSubmit);
+
+        // Chat event listener
+        chatForm.addEventListener('submit', handleChatFormSubmit);
+
+
+        // Start the application when the window loads
+        window.onload = initialize;
     </script>
 </body>
 </html>
